@@ -1,0 +1,205 @@
+---
+title: "Intensity measures: TSL2IM / getIntensity"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Intensity measures: TSL2IM / getIntensity}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+```{r minimal-example, eval = TRUE}
+# Minimal executable example
+library(gmsp)
+library(data.table)
+t_vec <- seq(0, 10, by = 0.01)
+tsl <- data.table(RSN = "R1", OCID = "H1", ID = "AT",
+                  t = t_vec, s = 500 * sin(2 * pi * 2 * t_vec))
+im <- TSL2IM(tsl, units.source = "mm", units.target = "mm")
+head(im)
+```
+
+`TSL2IM()` computes intensity measures from a long `TSL` table
+containing acceleration (AT), velocity (VT) and displacement (DT)
+series. `getIntensity()` remains as a compatibility wrapper around
+`TSL2IM()`.
+
+References: Arias (1970), Trifunac & Brady (1975), Campbell &
+Bozorgnia (2012), Inoue et al. (1996), Rathje et al. (1998).
+
+## Expected input
+
+`TSL` must be a `data.table` with columns:
+
+* `RSN` — record id,
+* `OCID` — channel id,
+* `ID` ∈ {`AT`, `VT`, `DT`},
+* `t` — time (s),
+* `s` — amplitude.
+
+### Units
+
+The function takes:
+
+* `units.source` — source units for `s` (`"mm"`, `"cm"`, `"m"`, `"gal"`,
+  `"g"`),
+* `units.target` — target base-length units
+  (`"mm"`, `"cm"`, `"m"`; default `"mm"`).
+
+A single factor `SFU = .getSF(units.source, units.target)` is applied to
+`s` for **all rows**, regardless of `ID`. This works if your AT, VT
+and DT series are already consistent in the same base-length unit
+(e.g. output of `AT2TS / VT2TS / DT2TS` in `units.target`).
+
+**Warning:** if you mix incompatible units (e.g. `units.source = "g"` while
+also having VT / DT in the same table), the scaling will be wrong.
+
+### Internal unit conventions
+
+After scaling:
+
+* For `AT`: `s` is acceleration in `units.target/s^2`.
+* For `VT`: `s` is velocity in `units.target/s`.
+* For `DT`: `s` is displacement in `units.target`.
+
+The acceleration of gravity in target units is
+$g = .getG(\mathrm{units.target})$ (e.g. 9806.65 mm/s² for
+`units.target = "mm"`).
+
+## Implemented measures
+
+Measures are computed per group $(RSN, OCID, ID)$.
+
+## Long and wide output
+
+The default output is long `IML`, with columns for metadata, `OCID`, `ID`,
+`IM`, `value`, and `units`. Use `output = "IMW"` when a pipeline needs one
+row per metadata and `OCID` with intensity measures as columns:
+
+```{r wide-output, eval = TRUE}
+imw <- TSL2IM(tsl, units.source = "mm", output = "IMW")
+names(imw)[1:min(6, length(names(imw)))]
+```
+
+The same projection is available for existing long results:
+`IML2IMW(im)`.
+
+### Acceleration (ID = "AT")
+
+**Peak and RMS:**
+
+$$\mathrm{PGA} = \max_t |a(t)|,
+  \qquad
+  \mathrm{ARMS} = \sqrt{\frac{1}{N}\sum_{i=1}^{N} a_i^2}.$$
+
+**Zero crossings and edges:**
+
+* `AZC` — number of zero crossings (discrete count).
+* `ATo`, `ATn` — first $a(t_1)$ and last $a(t_N)$ value.
+
+**Arias intensity** (discretised with
+$\Delta t = \mathrm{mean}(t_i - t_{i-1})$):
+
+$$\mathrm{AI} = \frac{\pi}{2g}\sum_{i=1}^{N} a_i^2\,\Delta t.$$
+
+* `AI` — total Arias intensity.
+* `AIu` — uses $a_+(t) = \max(a, 0)$ only.
+* `AId` — uses $a_-(t) = \min(a, 0)$ only.
+
+Units: `units.target/s`.
+
+**Significant duration (Husid):** the code builds a cumulative curve
+proportional to energy,
+
+$$H(t_k) = \pi\,\Delta t \sum_{i=1}^{k} a_i^2,$$
+
+and measures the time interval between two fractions of the total.
+
+* `D0595` — 5 % → 95 %.
+* `D0575` — 5 % → 75 %.
+* `D2080` — 20 % → 80 %.
+
+Units: s.
+
+**Mean period $T_m$** (Rathje et al. 1998), from the Fourier
+amplitude spectrum over a frequency band:
+
+$$T_m = \frac{\sum_{f \in [f_{\min}, f_{\max}]} C(f)^2 / f}
+             {\sum_{f \in [f_{\min}, f_{\max}]} C(f)^2}.$$
+
+`TmA` is computed on AT with $f_{\min} = 0.1$ Hz, $f_{\max} = 25$ Hz.
+
+**Duration / sampling:**
+
+* `NP` — number of samples.
+* `dt` — mean $\Delta t$.
+* `Fs` — $1/\Delta t$.
+* `Dmax` — last time `last(t)`.
+
+**Cumulative absolute velocity (CAV):**
+
+$$\mathrm{CAV} = \sum_{i=1}^{N} |a_i|\,\Delta t.$$
+
+`CAV5` applies the same sum but only over indices where
+$|a_i| \ge 0.05\,g$. Units: `units.target/s`.
+
+**Derived indices** (as implemented; not standardised):
+
+$$\mathrm{EPI} = \frac{0.9}{\pi}\,\mathrm{AI}\,(2g)\,D_{05\text{–}95},
+  \qquad
+  \mathrm{PDI} = \mathrm{AI}\,\left(\frac{D_{\max}}{\mathrm{AZC}}\right)^{\!2}.$$
+
+Units: `units.target^2/s^2` for `EPI`; `units.target·s` for `PDI` (with
+`AZC` treated as dimensionless).
+
+**Note:** if `AZC = 0`, `PDI` becomes `Inf`/`NaN`.
+
+### Velocity (ID = "VT")
+
+* `PGV` — $\max_t |v(t)|$.
+* `VRMS` — RMS of $v$.
+* `VZC` — zero crossings.
+* `VTo`, `VTn` — first / last value.
+* `TmV` — mean period from the Fourier amplitude spectrum.
+
+Units: `units.target/s` for PGV / VRMS / VTo / VTn; s for TmV.
+
+### Displacement (ID = "DT")
+
+* `PGD` — $\max_t |d(t)|$.
+* `DRMS` — RMS of $d$.
+* `DZC` — zero crossings.
+* `DTo`, `DTn` — first / last value.
+* `TmD` — mean period from the Fourier amplitude spectrum.
+
+Units: `units.target` for PGD / DRMS / DTo / DTn; s for TmD.
+
+## What it does not compute
+
+* No Housner-type spectral intensities.
+* No component averaging — measures are per `OCID`.
+* No SDOF-response-based intensity measures — those belong to
+  `TSL2PS()`.
+
+## References
+
+* Arias, A. (1970). A measure of earthquake intensity. In R. J.
+  Hansen (Ed.), *Seismic Design for Nuclear Power Plants*
+  (pp. 438–483). MIT Press.
+* Trifunac, M. D., & Brady, A. G. (1975). A study on the duration of
+  strong earthquake ground motion. *Bulletin of the Seismological
+  Society of America*, 65(3), 581–626.
+* Inoue, M., Cornell, C. A., & Bourque, L. B. (1996). Cumulative
+  absolute velocity as a measure of seismic demand and its utility
+  in limit-state criteria. *Earthquake Engineering & Structural
+  Dynamics*, 25(9), 1075–1094.
+* Rathje, E. M., Abrahamson, N. A., & Bray, J. D. (1998). *Earthquake
+  Ground Motions: Characteristics, the Mean Period and Its Use in
+  Engineering Applications*.
+* Campbell, K. W., & Bozorgnia, Y. (2012). Ground Motion Prediction
+  Equations for the Average Horizontal Components of PGA, PGV, and
+  5 %-Damped PSA at Spectral Periods between 0.01 s and 10.0 s.
+  *Earthquake Spectra*, 28(3), 1087–1114.

@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Database / indexing layer</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Database / indexing layer</h1>
+
+
+
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># Minimal executable example — selectRecords() works entirely in memory</span></span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="fu">library</span>(gmsp)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="fu">library</span>(data.table)</span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="co">#&gt; Attaching package: &#39;data.table&#39;</span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a><span class="co">#&gt; The following object is masked from &#39;package:base&#39;:</span></span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a><span class="co">#&gt;     %notin%</span></span>
+<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a>master <span class="ot">&lt;-</span> <span class="fu">data.table</span>(</span>
+<span id="cb1-10"><a href="#cb1-10" tabindex="-1"></a>  <span class="at">RecordID  =</span> <span class="fu">c</span>(<span class="st">&quot;aabbccdd00112233&quot;</span>, <span class="st">&quot;aabbccdd00112233&quot;</span>, <span class="st">&quot;eeff00112233aabb&quot;</span>),</span>
+<span id="cb1-11"><a href="#cb1-11" tabindex="-1"></a>  <span class="at">OwnerID   =</span> <span class="fu">c</span>(<span class="st">&quot;NGAW&quot;</span>, <span class="st">&quot;NGAW&quot;</span>, <span class="st">&quot;CESMD&quot;</span>),</span>
+<span id="cb1-12"><a href="#cb1-12" tabindex="-1"></a>  <span class="at">EventID   =</span> <span class="fu">c</span>(<span class="st">&quot;20100227T063452Z&quot;</span>, <span class="st">&quot;20100227T063452Z&quot;</span>, <span class="st">&quot;20110311T054624Z&quot;</span>),</span>
+<span id="cb1-13"><a href="#cb1-13" tabindex="-1"></a>  <span class="at">StationID =</span> <span class="fu">c</span>(<span class="st">&quot;ANTU&quot;</span>, <span class="st">&quot;ANTU&quot;</span>, <span class="st">&quot;MYG004&quot;</span>),</span>
+<span id="cb1-14"><a href="#cb1-14" tabindex="-1"></a>  <span class="at">DIR       =</span> <span class="fu">c</span>(<span class="st">&quot;H1&quot;</span>, <span class="st">&quot;H2&quot;</span>, <span class="st">&quot;H1&quot;</span>),</span>
+<span id="cb1-15"><a href="#cb1-15" tabindex="-1"></a>  <span class="at">EventMagnitude =</span> <span class="fu">c</span>(<span class="fl">8.8</span>, <span class="fl">8.8</span>, <span class="fl">9.1</span>),</span>
+<span id="cb1-16"><a href="#cb1-16" tabindex="-1"></a>  <span class="at">Repi      =</span> <span class="fu">c</span>(<span class="dv">90</span>, <span class="dv">90</span>, <span class="dv">140</span>)</span>
+<span id="cb1-17"><a href="#cb1-17" tabindex="-1"></a>)</span>
+<span id="cb1-18"><a href="#cb1-18" tabindex="-1"></a>sel <span class="ot">&lt;-</span> <span class="fu">selectRecords</span>(master[EventMagnitude <span class="sc">&gt;</span> <span class="dv">8</span> <span class="sc">&amp;</span> DIR <span class="sc">==</span> <span class="st">&quot;H1&quot;</span>])</span>
+<span id="cb1-19"><a href="#cb1-19" tabindex="-1"></a><span class="fu">print</span>(sel)</span>
+<span id="cb1-20"><a href="#cb1-20" tabindex="-1"></a><span class="co">#&gt;            RecordID OwnerID          EventID StationID</span></span>
+<span id="cb1-21"><a href="#cb1-21" tabindex="-1"></a><span class="co">#&gt;              &lt;char&gt;  &lt;char&gt;           &lt;char&gt;    &lt;char&gt;</span></span>
+<span id="cb1-22"><a href="#cb1-22" tabindex="-1"></a><span class="co">#&gt; 1: eeff00112233aabb   CESMD 20110311T054624Z    MYG004</span></span>
+<span id="cb1-23"><a href="#cb1-23" tabindex="-1"></a><span class="co">#&gt; 2: aabbccdd00112233    NGAW 20100227T063452Z      ANTU</span></span></code></pre></div>
+<p><code>gmsp</code> ships an optional layer for managing a local
+strong-motion record archive. It is <strong>separate</strong> from the
+signal-processing core (<code>AT2TS</code>, <code>TS2IMF</code>,
+<code>TSL2PS</code>, <code>getIntensity</code>) — you can use the core
+without ever touching the indexing layer.</p>
+<p>The indexing layer assumes records on disk in a fixed directory
+structure. The base paths are yours to choose; functions that touch disk
+take explicit <code>path</code>, <code>path.records</code>, or
+<code>path.index</code> arguments.</p>
+<div id="expected-file-layout" class="section level2">
+<h2>Expected file layout</h2>
+<pre><code>&lt;recordsDir&gt;/                                      ← you choose this
+  &lt;OwnerID&gt;/                                       e.g. &quot;NGAW&quot;, &quot;CESMD&quot;, &quot;ESM&quot;
+    &lt;EventID&gt;/                                     e.g. &quot;20060803T030800Z&quot;
+      &lt;StationID&gt;/                                 e.g. &quot;NTYB&quot;
+        raw.owner/                                 provider files as downloaded
+          record.json                              owner-supplied metadata
+          &lt;component-files&gt;                        .AT2 / .v2 / .ac / .tr / ...
+        raw/                                       gmsp output of extractRecord()
+          AT.&lt;RecordID&gt;.csv                        WIDE: provider OCID columns (scaled to mm)
+          AT.&lt;RecordID&gt;.json                       DIR / OCID / NP / PGA / dt / Fs / Units
+
+&lt;indexDir&gt;/                                        ← you choose this
+  RawFileTable.&lt;OwnerID&gt;.csv                       provider file inventory
+  RawRecordTable.&lt;OwnerID&gt;.csv                     one row per RecordID
+  RawIntensityTable.&lt;OwnerID&gt;.csv                  per (RecordID, DIR), 20 IM scalars
+  EventTable.&lt;OwnerID&gt;.csv                         event metadata
+  StationTable.&lt;OwnerID&gt;.csv                       station metadata
+
+&lt;selectionDir&gt;/                                    ← you choose this
+  &lt;name&gt;.csv                                       writeSelection() output
+  &lt;name&gt;.json                                      sidecar with audit metadata</code></pre>
+</div>
+<div id="provider-formats-supported" class="section level2">
+<h2>Provider formats supported</h2>
+<table>
+<colgroup>
+<col width="20%" />
+<col width="20%" />
+<col width="20%" />
+<col width="20%" />
+<col width="20%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th><code>OwnerID</code></th>
+<th>Format</th>
+<th>Parser</th>
+<th>Quantity</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>NGAW</code></td>
+<td>AT2</td>
+<td><code>readAT2()</code></td>
+<td>AT</td>
+<td>PEER NGA-West2 (4-line header, NPTS/DT)</td>
+</tr>
+<tr class="even">
+<td><code>CESMD</code></td>
+<td>V2 / V2c</td>
+<td><code>readV2()</code></td>
+<td>AT</td>
+<td>multi-channel V2 or single-channel V2c</td>
+</tr>
+<tr class="odd">
+<td><code>NWZ</code></td>
+<td>V2A</td>
+<td><code>readV2A()</code></td>
+<td>AT</td>
+<td>NWZ-flavoured V2</td>
+</tr>
+<tr class="even">
+<td><code>GSC</code></td>
+<td>TR (A/B/C/Z)</td>
+<td><code>readTR()</code></td>
+<td>AT</td>
+<td>Geological Survey of Canada</td>
+</tr>
+<tr class="odd">
+<td><code>IGP</code></td>
+<td>ACA / LIS</td>
+<td><code>readAC()</code></td>
+<td>AT</td>
+<td>Instituto Geofísico del Perú</td>
+</tr>
+<tr class="even">
+<td><code>UCR</code></td>
+<td>ACB</td>
+<td><code>readAC()</code></td>
+<td>AT</td>
+<td>Universidad de Costa Rica</td>
+</tr>
+<tr class="odd">
+<td>Generic</td>
+<td>two-col</td>
+<td><code>readTwoCol()</code></td>
+<td>AT</td>
+<td>(t, s) ASCII columns; used by CAL, CENA, etc.</td>
+</tr>
+<tr class="even">
+<td><code>ISEE</code></td>
+<td>ISEE</td>
+<td><code>readISEE()</code></td>
+<td>VT</td>
+<td>Micromate / ISEE blasting seismograph (mm/s velocity, MicL
+dropped)</td>
+</tr>
+</tbody>
+</table>
+<p>Each parser returns a LONG <code>data.table(t, OCID, s)</code> for
+one component file. <code>parseRecord()</code> is the dispatcher that
+consults <code>.OWNER_FORMAT</code> and calls the right parser for the
+owner.</p>
+</div>
+<div id="extraction-pipeline" class="section level2">
+<h2>Extraction pipeline</h2>
+<pre><code>parseRecord()       ── reads raw.owner/* via the owner&#39;s parser
+   │                   returns LONG (t, OCID, s) for all components
+   ▼
+mapComponents()     ── derives DIR labels H1 / H2 / UP from provider OCIDs
+   │                   H1/H2 are derived processing directions
+   │                   `extractRecord()` uses rotate = FALSE
+   │                   Returns NULL for arrays or 2-comp records
+   ▼
+alignComponents()   ── pads (or truncates) to equal NP across components
+   │
+   ▼
+extractRecord()     ── scales to canonical mm via .parseUnits + .getSF
+                       writes raw/&lt;KIND&gt;.&lt;RecordID&gt;.csv + &lt;KIND&gt;.&lt;RecordID&gt;.json
+                       CSV columns remain provider OCID values; the JSON
+                       sidecar stores the DIR -&gt; OCID mapping.
+                       KIND ∈ {AT, VT, DT} -- derived from the Units
+                       suffix by .parseKind(), or forced by the
+                       `kind = &quot;VT&quot;` argument (e.g. for blasting
+                       records whose Units may be missing).
+                       Sidecar peak field is named accordingly:
+                       PGA (KIND=AT) / PGV (KIND=VT) / PGD (KIND=DT).
+                       RecordID = first 16 hex chars of md5(CSV).</code></pre>
+<p><code>extractRecord()</code> is the orchestrator; parsers and
+<code>mapComponents()</code> are public so they can be reused or
+audited. Public calls use <code>parseRecord(.x, path)</code> and
+<code>extractRecord(.x, path)</code>, where <code>.x</code> is the
+one-record master subset and <code>path</code> is the records root.</p>
+</div>
+<div id="indexing-tables" class="section level2">
+<h2>Indexing tables</h2>
+<p>After <code>extractRecord()</code> has produced <code>raw/</code>
+outputs for some records, the indexing functions scan the records tree
+and emit per-owner CSVs to <code>&lt;indexDir&gt;/</code>:</p>
+<ul>
+<li><code>buildRawFileTable()</code> — provider-file inventory (one row
+per <code>ComponentID × FileID</code>); reads
+<code>raw.owner/record.json</code> or <code>raw.owner.tar.gz</code>
+(post-archive safe).</li>
+<li><code>buildRawRecordTable()</code> — one row per
+<code>RecordID</code> (<code>NP = max(post-align)</code>,
+<code>pad = max NP − min NP</code>, <code>Fs</code>).</li>
+<li><code>buildRawIntensityTable()</code> — calls
+<code>getRawIntensities()</code> per station; emits three rows per
+record (one per <code>DIR</code>), each carrying the 20 AT-derivable
+scalars from <code>getIntensity()</code>.</li>
+</ul>
+<p>The provider-flatfile + USGS catalog join
+(<code>buildEventTable()</code>) is under development and ships in
+<code>inst/dev/</code>; it is not yet part of the exported API.</p>
+</div>
+<div id="master-record-catalog" class="section level2">
+<h2>Master record catalog</h2>
+<p><code>buildMaster()</code> joins, per owner:</p>
+<ul>
+<li><code>RawRecordTable.&lt;O&gt;.csv</code> (record list),</li>
+<li><code>EventTable.&lt;O&gt;.csv</code> (event scalars, merged via
+<code>fcoalesce</code> with source precedence <code>*.owner</code> &gt;
+<code>*.USGS</code> &gt; <code>*.ISC</code>),</li>
+<li><code>StationTable.&lt;O&gt;.csv</code> (station scalars including
+Vs30),</li>
+</ul>
+<p>and emits a <code>data.table</code> keyed at
+<code>(RecordID, DIR)</code>. It adds:</p>
+<ul>
+<li><code>Repi</code> — epicentral distance (haversine, km),</li>
+<li><code>Rhyp</code> — hypocentral distance, <span class="math inline">\(\sqrt{\mathrm{Repi}^2
++ \mathrm{EventDepth}^2}\)</span> (km).</li>
+</ul>
+<p>After <code>buildMaster()</code> you can filter the master and pass
+the subset to <code>selectRecords()</code> to produce a
+<code>(RecordID, OwnerID, EventID, StationID)</code> selection, which is
+the input contract for the <code>readTS()</code> family —
+<code>readAT()</code> / <code>readVT()</code> / <code>readDT()</code>
+are KIND-specific wrappers around
+<code>readTS(.x, path, kind = ...)</code> — and for
+<code>writeSelection()</code> (persists the selection to disk for
+orchestration).</p>
+</div>
+<div id="composing-with-the-processing-core" class="section level2">
+<h2>Composing with the processing core</h2>
+<p>The natural composition for acceleration records is:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>M   <span class="ot">&lt;-</span> <span class="fu">buildMaster</span>(<span class="at">path =</span> <span class="st">&quot;&lt;your index path&gt;&quot;</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>Selection <span class="ot">&lt;-</span> <span class="fu">selectRecords</span>(M[EventMagnitude <span class="sc">&gt;</span> <span class="dv">7</span> <span class="sc">&amp;</span> Repi <span class="sc">&lt;</span> <span class="dv">100</span> <span class="sc">&amp;</span> DIR <span class="sc">==</span> <span class="st">&quot;H1&quot;</span>])</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>TS  <span class="ot">&lt;-</span> <span class="fu">readAT</span>(<span class="at">.x =</span> Selection, <span class="at">path =</span> <span class="st">&quot;&lt;your records path&gt;&quot;</span>)</span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>ATS <span class="ot">&lt;-</span> TS[, <span class="fu">AT2TS</span>(.SD, <span class="at">units.source =</span> <span class="st">&quot;mm&quot;</span>, <span class="at">Fmax =</span> <span class="dv">25</span>),</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>          by <span class="ot">=</span> .(RecordID, OwnerID, EventID, StationID)]</span></code></pre></div>
+<p>The output of <code>readAT()</code> is a wide table keyed by
+<code>(RecordID, OwnerID, EventID, StationID, t)</code> with one column
+per provider <code>OCID</code>. <code>AT2TS()</code> consumes it per
+record. The shape is identical for <code>readVT()</code> and
+<code>readDT()</code>; pair them with <code>VT2TS()</code> /
+<code>DT2TS()</code>. Blasting records (e.g. ISEE) typically flow
+through <code>readVT()</code> + <code>VT2TS()</code>.</p>
+</div>
+<div id="audit-helpers" class="section level2">
+<h2>Audit helpers</h2>
+<ul>
+<li><code>auditSite(M)</code> — flags rows with missing or out-of-range
+<code>StationVs30</code>.</li>
+<li><code>auditDistances(M)</code> — flags <code>lat/lon</code> NA or
+out-of-range, negative depths, large <code>Repi</code>, geometric
+impossibility (<code>Rhyp &lt; Repi</code>).</li>
+<li><code>auditParsers(.x = M, owner = &quot;NGAW&quot;, path = ...)</code> —
+dry-run <code>parseRecord()</code> per <code>(EventID, StationID)</code>
+of one owner and report OK / FAIL / WARN with reason.</li>
+</ul>
+</div>
+<div id="maintenance" class="section level2">
+<h2>Maintenance</h2>
+<p><code>archiveRawOwner(path)</code> compresses <code>raw.owner/</code>
+to <code>raw.owner.tar.gz</code> after extraction has succeeded,
+verifies the archive is readable, and only then unlinks the
+original.</p>
+</div>
+<div id="notes" class="section level2">
+<h2>Notes</h2>
+<ul>
+<li>The package does <strong>not</strong> download data. Bringing raw
+provider files to <code>raw.owner/</code> is the user’s responsibility.
+Examples under <code>examples/maintenance/</code> in the source
+repository show a pattern for ingestion (USGS catalog matching, staging
+/ promote / rollback, etc.).</li>
+<li><code>RecordID</code> is a 16-character hex hash
+(<code>openssl::md5</code> of the WIDE CSV body, truncated). It is
+stable across re-extraction of the same record.</li>
+</ul>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

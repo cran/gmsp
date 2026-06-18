@@ -1,0 +1,196 @@
+---
+title: "Elastic SDOF response spectra: TSL2PS"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Elastic SDOF response spectra: TSL2PS}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+```{r minimal-example, eval = TRUE}
+# Minimal executable example
+library(gmsp)
+library(data.table)
+t_vec <- seq(0, 20, by = 0.01)
+dt_acc <- data.table(
+  t = t_vec,
+  H1 = 500 * sin(2 * pi * 1 * t_vec) * exp(-0.1 * t_vec),
+  H2 = 300 * cos(2 * pi * 1.5 * t_vec) * exp(-0.1 * t_vec),
+  UP = 100 * sin(2 * pi * 0.8 * t_vec) * exp(-0.1 * t_vec)
+)
+tsl <- AT2TS(dt_acc, units.source = "mm", isRaw = FALSE,
+             output = "TSL", audit = FALSE)
+ps <- TSL2PS(tsl[OCID == "H1"], xi = 0.05,
+             Tn = c(0.1, 0.2, 0.5, 1.0, 2.0),
+             output = "PSL")
+head(ps)
+```
+
+`TSL2PS()` computes elastic single-degree-of-freedom (SDOF) response
+spectra for canonical `TSL` input. Source time-series `ID` values map to
+spectral `ID` values: `AT -> PSA`, `VT -> PSV`, and `DT -> SD`.
+
+The reported spectral IDs are:
+
+* `PSA` — pseudo-spectral acceleration,
+* `PSV` — pseudo-spectral velocity,
+* `SD`  — spectral displacement.
+
+Classic references: Nigam & Jennings (1969), Chopra (2017).
+
+## Input and output
+
+### Input
+
+* `.x`: canonical `TSL` `data.table` with `t`, `s`, `ID`, `OCID`, plus
+  optional metadata.
+* `xi`: damping ratio ($0 \le \xi \le 1$), default `0.05`.
+* `Tn`: period vector in seconds. If `NULL`, a default grid is used.
+  Do not include `0`; the function prepends the `Tn = 0` peak-value
+  anchor internally.
+
+Grouping metadata is derived from the `TSL` schema: all columns except
+`t`, `s`, `ID`, and `OCID` are metadata keys. `OCID` remains the
+component/channel key.
+
+### Output
+
+`output = "PSL"` returns the canonical long table. `output = "PSW"`
+returns the wide projection:
+
+* `PSW`: wide projection with columns `PSA.<OCID>`, `PSV.<OCID>`,
+  `SD.<OCID>`.
+* `PSL`: canonical long table with columns `Tn`, `ID` ∈ {PSA, PSV, SD},
+  `OCID`, `S`, plus grouping keys.
+
+`TSL2PS()` is the public spectra interface. It consumes canonical `TSL`; it
+does not expose `BY`, `COL.s`, `COL.t`, or `COL.ID`.
+
+`PSL2PSW()` and `PSW2PSL()` expose the same long/wide projection for existing
+spectra tables:
+
+```{r spectra-shape-converters, eval = TRUE}
+psw <- PSL2PSW(ps)
+psl_again <- PSW2PSL(psw)
+head(psl_again)
+```
+
+When `xi` is a vector, `TSL2PS()` runs the scalar spectra path once per
+damping ratio and adds `xi` as metadata. Scalar `xi` keeps the historical
+schema without an `xi` column.
+
+```{r vector-xi-example, eval = TRUE}
+ps_xi <- TSL2PS(tsl[OCID == "H1"], xi = c(0.02, 0.05),
+                Tn = c(0.1, 0.2), output = "PSW")
+head(ps_xi)
+```
+
+## SDOF model
+
+For each period $T_n$ the code computes
+
+$$\omega_n = \frac{2\pi}{T_n}, \qquad C = 2\,\xi\,\omega_n,
+  \qquad K = \omega_n^2.$$
+
+A 2D linear state-space system is integrated:
+
+$$\dot{\mathbf{y}} = \mathbf{A}\,\mathbf{y} + \mathbf{B}\,u(t),
+  \qquad
+  \mathbf{A} = \begin{bmatrix} 0 & 1 \\ -K & -C \end{bmatrix},
+  \qquad
+  \mathbf{B} = \begin{bmatrix} 0 \\ 1 \end{bmatrix}.$$
+
+The input $u(t)$ is the series value `s[k]`. The sign convention
+(e.g., $u(t) = \pm a_g(t)$) is not enforced by the code; since the
+final outputs use absolute maxima, the sign does not affect
+PSA / PSV / SD.
+
+## Discretisation via matrix exponential
+
+For a time step $\Delta t$, assuming piecewise-constant input within
+the step, the exact update is
+
+$$\mathbf{y}_k = e^{\mathbf{A}\Delta t}\,\mathbf{y}_{k-1}
+  + \left(e^{\mathbf{A}\Delta t} - \mathbf{I}\right)
+    \mathbf{A}^{-1}\,\mathbf{B}\,u_k.$$
+
+Implementation:
+
+* `Ae  = expm::expm(A * dt)`
+* `AeB = (Ae - I) %*% pracma::pinv(A) %*% B`
+
+The state is then updated by looping over $k = 2 \ldots N$.
+
+## How PSA / PSV / SD are built
+
+In the single-signal SDOF worker, after simulation the code takes the
+absolute maximum of displacement (first state):
+
+$$SD = \max_t |y_1(t)|.$$
+
+It then reports
+
+$$PSV = \omega_n\,SD, \qquad PSA = \omega_n^2\,SD.$$
+
+For canonical `TSL` input, `TSL2PS()` runs the worker on the matching
+source series and keeps the matching spectral ID: `PSA` from `AT`,
+`PSV` from `VT`, and `SD` from `DT`. The function prepends $T_n = 0$
+with the corresponding peak value (`PGA`, `PGV`, or `PGD`).
+
+## D50 and D100 horizontal spectra
+
+For canonical `TSL` input, `TSL2PS(D50 = TRUE)` can add the median rotated
+horizontal component as an ordinary derived `OCID` named `D50`.
+`TSL2PS(D100 = TRUE)` can add the maximum rotated horizontal component as
+`OCID = "D100"`. The input must contain `OCID = "H1"` and `OCID = "H2"` for
+each source `ID` (`AT`, `VT`, and `DT`). The vertical component `UP` remains
+an ordinary component and is not used to compute D50 or D100.
+
+D50 and D100 follow the same spectral-ID contract as the component spectra:
+
+* `PSA.D50` is computed from rotated `AT`;
+* `PSV.D50` is computed from rotated `VT`;
+* `SD.D50` is computed from rotated `DT`.
+* `PSA.D100`, `PSV.D100`, and `SD.D100` use the same source-ID mapping.
+
+D100 is computed independently for each period and spectral ID. The angle that
+maximizes `PSA` can differ from the angle that maximizes `PSV` or `SD`.
+
+```{r d50-example, eval = TRUE}
+t_d50 <- seq(0, 1, by = 0.01)
+at_wide <- data.table(
+  t = t_d50,
+  H1 = 10 * sin(2 * pi * 3 * t_d50),
+  H2 = 7 * cos(2 * pi * 4 * t_d50),
+  UP = 3 * sin(2 * pi * 2 * t_d50)
+)
+
+tsl <- AT2TS(at_wide, units.source = "mm", isRaw = FALSE,
+             output = "TSL", audit = FALSE)
+rot_psl <- TSL2PS(tsl, Tn = c(0.1, 0.2),
+                  output = "PSL", D50 = TRUE, D100 = TRUE, nTheta = 12L)
+rot_psl[OCID %chin% c("D50", "D100")]
+```
+
+## Notes (limitations and corner cases)
+
+* If the user provides `Tn` that includes 0, the call errors because
+  `TSL2PS()` adds the `Tn = 0` peak-value anchor internally.
+* Complexity is nested over period and sample: long records and dense
+  period grids can be slow.
+* Time regularization is handled inside the worker; the series is
+  interpolated to a rationalised `dt`.
+* `TSL2PS()` derives grouping metadata from the `TSL` schema. It does
+  not expose `BY`, `COL.s`, `COL.t`, or `COL.ID`.
+
+## References
+
+* Nigam, N. C., & Jennings, P. C. (1969). Calculation of Response
+  Spectra from Strong-Motion Earthquake Records. *Bulletin of the
+  Seismological Society of America*, 59(2), 909–922.
+* Chopra, A. K. (2017). *Dynamics of Structures: Theory and
+  Applications to Earthquake Engineering* (5th ed.). Pearson.
