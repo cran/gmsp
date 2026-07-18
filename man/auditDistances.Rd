@@ -2,12 +2,12 @@
 % Please edit documentation in R/auditDistances.R
 \name{auditDistances}
 \alias{auditDistances}
-\title{Audit distances in the master table -- sanity v1.}
+\title{Audit distances in a record metadata table.}
 \usage{
 auditDistances(DT, repiOutlier = 5000)
 }
 \arguments{
-\item{DT}{master \code{data.table}.}
+\item{DT}{record metadata \code{data.table}.}
 
 \item{repiOutlier}{threshold in km above which \code{Repi} is
 flagged (default 5000).}

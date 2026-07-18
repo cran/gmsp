@@ -1,0 +1,16 @@
+{
+  "path": {
+    "index": "gmsp/index",
+    "selection": "gmsp/selection/example",
+    "matchConfig": "gmsp/match.json"
+  },
+  "owners": [
+    "OWNER"
+  ],
+  "processID": "raw",
+  "units": {
+    "PGA": "g"
+  },
+  "requireIMF": false,
+  "oneRecordPerEvent": false
+}

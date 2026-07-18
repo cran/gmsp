@@ -183,12 +183,11 @@ DT2TS <- function(
 
   ## STFT Strategy and Resample ----
   # Get optimal STFT parameters
-  HasKNyq <- "kNyq" %in% names(as.list(match.call()))
-  if (HasKNyq) {
-    STFTParams <- .setSTFT(NP = NP, Fs = Fs, Fmax = Fmax, kNyq = kNyq,
+  if (missing(kNyq)) {
+    STFTParams <- .setSTFT(NP = NP, Fs = Fs, Fmax = Fmax,
       NW.min = NW, MW.min = 16, OVLP = OVLP)
   } else {
-    STFTParams <- .setSTFT(NP = NP, Fs = Fs, Fmax = Fmax,
+    STFTParams <- .setSTFT(NP = NP, Fs = Fs, Fmax = Fmax, kNyq = kNyq,
       NW.min = NW, MW.min = 16, OVLP = OVLP)
   }
 
@@ -199,17 +198,17 @@ DT2TS <- function(
 
   # Audit STFT and parameters (pre-resample)
   if (audit) {
-    AuditSignal <- as.numeric(X[[1]])
-    DT_audit <- data.table(t = t, s = AuditSignal)
-    HasKNyq <- "kNyq" %in% names(as.list(match.call()))
     aud <- try(
-      if (HasKNyq) {
-        auditSTFT(DT_audit, Fmax = Fmax, kNyq = kNyq, NW.min = NW, MW.min = 16, OVLP = OVLP,
-          ApassLP = ApassLP, AstopLP = AstopLP)
+      if (missing(kNyq)) {
+        auditSTFT(data.table(t = t, s = as.numeric(X[[1]])), Fmax = Fmax,
+          NW.min = NW, MW.min = 16, OVLP = OVLP, ApassLP = ApassLP,
+          AstopLP = AstopLP)
       } else {
-        auditSTFT(DT_audit, Fmax = Fmax, NW.min = NW, MW.min = 16, OVLP = OVLP,
+        auditSTFT(data.table(t = t, s = as.numeric(X[[1]])), Fmax = Fmax,
+          kNyq = kNyq, NW.min = NW, MW.min = 16, OVLP = OVLP,
           ApassLP = ApassLP, AstopLP = AstopLP)
-      }, silent = TRUE)
+      },
+      silent = TRUE)
     if (!inherits(aud, "try-error") && length(aud$warnings)) {
       warning(paste(aud$warnings, collapse = "\n"))
       if (verbose) {
@@ -362,32 +361,20 @@ DT2TS <- function(
     return(DT)
   }
 
-  ## Summary ----
-  NP <- nrow(AT)
-  ts <- seq(0, dt * (NP - 1), dt)
-  Fs <- 1 / dt
-  df <- Fs / NW
-  fs <- seq(from = 0, by = df, length.out = NW / 2)
-
   ## Pack Time Series  ----
+  ts <- seq(0, dt * (nrow(AT) - 1), dt)
   TSW <- data.table(ts = ts, AT = AT, VT = VT, DT = DT)
   if (identical(output, "TSW")) {
     return(TSW)
   }
 
-  id.vars <- c("ts")
-  measure.vars <- colnames(TSW[, -c("ts")])
-  AUX <- data.table::melt(TSW, id.vars = id.vars, measure.vars = measure.vars)
-  BAD <- !is.finite(AUX[["value"]])
-  if (any(BAD)) {
-    COUNT <- AUX[BAD, .N, by = "variable"]
-    MSG <- paste(
-      sprintf("%s=%d", COUNT[["variable"]], COUNT[["N"]]),
-      collapse = ", "
-    )
+  AUX <- data.table::melt(TSW, id.vars = "ts",
+                          measure.vars = setdiff(names(TSW), "ts"))
+  if (nrow(AUX[!is.finite(value)])) {
     stop(sprintf(
       "DT2TS TSL output requires finite samples; non-finite values by variable: %s.",
-      MSG
+      AUX[!is.finite(value), .N, by = variable][
+        , paste(sprintf("%s=%d", variable, N), collapse = ", ")]
     ), call. = FALSE)
   }
   TSL <- AUX[, .(t = ts, s = value, ID = gsub("\\..*$", "", variable), OCID = gsub("^[^.]*\\.", "", variable))]

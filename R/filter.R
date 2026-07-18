@@ -15,13 +15,13 @@
     stop(".ffilter: invalid STEP range; check NP and NW")
   }
   STEP <- seq.int(1L, StepEnd, by = hop)
-if (.verbose()) cat(sprintf("    STFT windows: %d steps OVLP=%.0f\n", length(STEP), OVLP))
+  if (.verbose()) cat(sprintf("    STFT windows: %d steps OVLP=%.0f\n", length(STEP), OVLP))
 
   z <- seewave::stdft(
     wave = matrix(.x, ncol = 1), f = f, wl = NW, zp = 0, step = STEP,
     wn = "hanning", fftw = FALSE, complex = TRUE)
-  LOG <- max(abs(z), na.rm = TRUE)
-if (.verbose()) cat(sprintf("    After STDFT: max=%.3e\n", LOG))
+  if (.verbose()) cat(sprintf("    After STDFT: max=%.3e\n",
+    max(abs(z), na.rm = TRUE)))
 
   # Ensure custom length matches frequency bins
   if (length(custom) != nrow(z)) {
@@ -29,12 +29,12 @@ if (.verbose()) cat(sprintf("    After STDFT: max=%.3e\n", LOG))
   }
   # Safe per-row multiplication to avoid recycling
   z <- sweep(z, 1L, custom, `*`)
-  LOG <- max(abs(z), na.rm = TRUE)
-if (.verbose()) cat(sprintf("    After filter*custom: max=%.3e\n", LOG))
+  if (.verbose()) cat(sprintf("    After filter*custom: max=%.3e\n",
+    max(abs(z), na.rm = TRUE)))
 
   x <- (seewave::istft(z, wl = NW, ovlp = OVLP, wn = "hanning", output = "matrix", f = f)) |> as.vector()
-  LOG <- max(abs(x), na.rm = TRUE)
-if (.verbose()) cat(sprintf("    After ISTFT: max=%.3e\n", LOG))
+  if (.verbose()) cat(sprintf("    After ISTFT: max=%.3e\n",
+    max(abs(x), na.rm = TRUE)))
 
   return(x)
 }

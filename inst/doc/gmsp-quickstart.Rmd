@@ -142,7 +142,7 @@ par(op)
 
 ## Where to go next
 
-Four vignettes ship with the package:
+Additional vignettes ship with the package:
 
 ```r
 vignette("signal-processing",  package = "gmsp")  # AT2TS / VT2TS / DT2TS math
@@ -150,6 +150,7 @@ vignette("imfs",               package = "gmsp")  # TS2IMF decomposition (EMD / 
 vignette("spectra",            package = "gmsp")  # TSL2PS elastic SDOF spectra
 vignette("intensity-measures", package = "gmsp")  # getIntensity output details
 vignette("database",           package = "gmsp")  # optional file-based indexing layer
+vignette("pipeline-runners",   package = "gmsp")  # optional JSON-driven batch runners
 ```
 
 In-session help: `?AT2TS`, `?TS2IMF`, `?TSL2PS`, `?getIntensity`, or

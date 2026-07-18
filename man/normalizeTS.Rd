@@ -44,5 +44,5 @@ max(abs(tsl[ID == "AT", s]))
 
 }
 \seealso{
-\code{\link[=VT2TS]{VT2TS()}}, \code{\link[=rotateComponents]{rotateComponents()}}
+\code{\link[=VT2TS]{VT2TS()}}, \code{\link[=mapComponents]{mapComponents()}}
 }

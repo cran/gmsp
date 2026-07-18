@@ -1,10 +1,10 @@
 #' Audit parsers: dry-run `parseRecord` on every record of an owner.
 #'
-#' Iterates the master subset for `owner`, calls `parseRecord` per
+#' Iterates a record metadata subset for `owner`, calls `parseRecord` per
 #' unique `(EventID, StationID)`, catches errors, and returns a status
 #' table.
 #'
-#' @param .x master `data.table` from `buildMaster()`.
+#' @param .x record metadata `data.table`.
 #' @param owner one OwnerID string.
 #' @param path Absolute path to the records root passed through to
 #'   `parseRecord()`. Required -- no default.

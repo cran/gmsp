@@ -1,0 +1,10 @@
+{
+  "path": {
+    "index": "gmsp/index"
+  },
+  "owners": [
+    "OWNER"
+  ],
+  "processID": "raw",
+  "master": true
+}

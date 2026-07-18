@@ -1,0 +1,27 @@
+{
+  "path": {
+    "source": "gmsp/match/example"
+  },
+  "TS": true,
+  "PS": true,
+  "ID": {
+    "TS": ["AT", "VT", "DT", "AI", "CAV", "CAV5"],
+    "PS": ["PSA", "PSV", "SD"]
+  },
+  "DIR": {
+    "TS": ["H1", "H2", "UP"],
+    "PS": ["H1", "H2", "UP", "D50", "D100"]
+  },
+  "target": {
+    "path": "oq/data/UHSTable.Rds",
+    "ID": "TARGET",
+    "TR": 10000,
+    "Vs30": 1500,
+    "p": "mean",
+    "siteID": "SITE",
+    "value": "SaF",
+    "units": "g"
+  },
+  "recordID": null,
+  "override": false
+}

@@ -5,8 +5,10 @@
   NP <- nrow(X)
 
   # === LOGGING: Resample setup ===
-  Xmax <- max(sapply(X, function(col) max(abs(as.numeric(unlist(col))), na.rm = TRUE)), na.rm = TRUE)
-if (.verbose()) cat(sprintf("  .resample: input_max=%.3e Fs=%.0f->%.0f Fmax=%.0f\n", Xmax, Fs, TargetFs, Fmax))
+  if (.verbose()) cat(sprintf(
+    "  .resample: input_max=%.3e Fs=%.0f->%.0f Fmax=%.0f\n",
+    max(sapply(X, function(col) max(abs(as.numeric(unlist(col))), na.rm = TRUE)), na.rm = TRUE),
+    Fs, TargetFs, Fmax))
 
   # Reference peak (per-column) for later restoration
   Xp.in <- sapply(X, .getPeak)
@@ -43,13 +45,13 @@ if (.verbose()) cat(sprintf("  .resample: input_max=%.3e Fs=%.0f->%.0f Fmax=%.0f
     Fstop <- min(Fpass + 8 * df, Fnyq)
     if (Fstop <= Fpass) Fstop <- Fpass + df
   }
-if (.verbose()) cat(sprintf("  AntiAlias filter: NW=%d df=%.3f Fpass=%.1f Fstop=%.1f Hz (Fnyq=%.1f)\n", NW, df, Fpass, Fstop, Fnyq))
+  if (.verbose()) cat(sprintf("  AntiAlias filter: NW=%d df=%.3f Fpass=%.1f Fstop=%.1f Hz (Fnyq=%.1f)\n", NW, df, Fpass, Fstop, Fnyq))
 
   LP <- .buildLowPassButtterworth(f = fs, Fstop = Fstop, Fpass = Fpass, Astop = Astop, Apass = Apass)
-if (.verbose()) cat(sprintf("  LowPass filter: max=%.3e\n", max(abs(LP), na.rm = TRUE)))
+  if (.verbose()) cat(sprintf("  LowPass filter: max=%.3e\n", max(abs(LP), na.rm = TRUE)))
   
   # Golden rules logging
-if (.verbose()) {
+  if (.verbose()) {
     cat(sprintf(
       "  Rules: Fs.int=%s NW.pow2=%s df<=df.T/8=%s bins.tr=%d ipass.int=%s istop.int=%s nyq.margin=%.3f (>=df=%s) Apass=%.3f Astop=%.1e\n",
       as.character(TargetFs == as.integer(TargetFs)),
@@ -68,18 +70,18 @@ if (.verbose()) {
   X <- X[, lapply(.SD, function(z) {
     .ffilter(.x = as.numeric(z), f = Fs, custom = LP, OVLP = OVLP, NW = NW)
   })]
-if (.verbose()) cat(sprintf("  After anti-alias: max=%.3e\n", max(abs(as.matrix(X)), na.rm = TRUE)))
+  if (.verbose()) cat(sprintf("  After anti-alias: max=%.3e\n", max(abs(as.matrix(X)), na.rm = TRUE)))
 
   # Resample to integer TargetFs
   TargetFs <- as.integer(round(TargetFs))
   X <- X[, lapply(.SD, function(z) signal::resample(z, TargetFs, Fs))]
-  LOG <- max(abs(as.matrix(X)), na.rm = TRUE)
-if (.verbose()) cat(sprintf("  After signal::resample: max=%.3e\n", LOG))
+  if (.verbose()) cat(sprintf("  After signal::resample: max=%.3e\n",
+    max(abs(as.matrix(X)), na.rm = TRUE)))
 
   # Remove DC
   X <- X[, .(sapply(.SD, function(x) x - mean(x)))]
   X <- data.table::as.data.table(as.data.frame(X))
-if (.verbose()) cat(sprintf("  After remove DC: max=%.3e\n", max(sapply(X, function(col) max(abs(as.numeric(unlist(col))), na.rm = TRUE)), na.rm = TRUE)))
+  if (.verbose()) cat(sprintf("  After remove DC: max=%.3e\n", max(sapply(X, function(col) max(abs(as.numeric(unlist(col))), na.rm = TRUE)), na.rm = TRUE)))
 
   # Peak-based amplitude restoration per column
   Xp.out <- sapply(X, .getPeak)
@@ -89,8 +91,8 @@ if (.verbose()) cat(sprintf("  After remove DC: max=%.3e\n", max(sapply(X, funct
     if (xp_out > eps && xp_in > 0) col * (xp_in / xp_out) else col
   }, X, Xp.in, Xp.out, SIMPLIFY = FALSE)))
   names(X) <- OCID
-  LOG <- max(sapply(X, function(col) max(abs(as.numeric(unlist(col))), na.rm = TRUE)), na.rm = TRUE)
-if (.verbose()) cat(sprintf("  After peak rescale: max=%.3e\n", LOG))
+  if (.verbose()) cat(sprintf("  After peak rescale: max=%.3e\n",
+    max(sapply(X, function(col) max(abs(as.numeric(unlist(col))), na.rm = TRUE)), na.rm = TRUE)))
 
   return(X)
 }

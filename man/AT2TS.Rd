@@ -15,7 +15,7 @@ AT2TS(
   NW = 128,
   OVLP = 75,
   flatZeros = FALSE,
-  Astop0 = 1e-04,
+  Astop0 = 0.001,
   Apass0 = 0.001,
   AstopLP = 0.001,
   ApassLP = 0.98,
@@ -58,10 +58,14 @@ strategy. Default: \code{128}.}
 
 \item{OVLP}{numeric. Window overlap percent. Default: \code{75}.}
 
-\item{flatZeros}{logical. Apply edge tapering to suppress low-level pre/post
-segments. If \code{isRaw = TRUE}, a taper is applied regardless. Default: \code{FALSE}.}
+\item{flatZeros}{logical. If \code{TRUE}, flatten external low-amplitude tails to
+exact zeros using per-channel normalized acceleration amplitude before
+optional trimming. If \code{isRaw = TRUE}, the historical smooth taper is still
+applied even when \code{flatZeros = FALSE}. Default: \code{FALSE}.}
 
-\item{Astop0}{numeric. Normalized stop threshold \verb{0..1} for taper/flatten; relative to per-channel max amplitude. Default: \code{1e-4}.}
+\item{Astop0}{numeric. Normalized stop threshold \verb{0..1} for taper/flatten;
+relative to per-channel max amplitude. \code{Astop0 = 1e-3} is equivalent to
+threshold \code{10} after normalizing PGA to \code{10000}. Default: \code{1e-3}.}
 
 \item{Apass0}{numeric. Normalized pass threshold \verb{0..1} for taper/flatten; relative to per-channel max amplitude. Default: \code{1e-3}.}
 
@@ -70,8 +74,9 @@ Default: \code{1e-3}.}
 
 \item{ApassLP}{numeric. Passband for anti-alias LP (resampling). Default: \code{0.98}.}
 
-\item{trimZeros}{logical. If \code{TRUE}, trims leading/trailing zeros according to the
-final taper window. Default: \code{FALSE}.}
+\item{trimZeros}{logical. If \code{TRUE}, trims rows outside the final nonzero
+window support after taper/flatten. Multi-component records use the union
+of component supports. Default: \code{FALSE}.}
 
 \item{detrend}{logical. Remove mean before/after each main stage. Default: \code{FALSE}.}
 
@@ -105,9 +110,8 @@ channels, before any tapering or integration.
 \verb{DT.<OCID>}.
 \item \code{"TSL"} (default): long table with columns \code{t}, \code{s}, \code{ID}
 (one of \code{"AT"}, \code{"VT"}, \code{"DT"}), and \code{OCID}.
-Sampling-related scalars (\code{Fs}, \code{dt}, \code{df}, \code{NP}, ...) are computed
-internally during processing but are not part of the return value;
-recover them from the output via \code{1 / diff(ts)[1]} and \code{nrow(.)}.
+Sampling interval and row count are not returned separately; recover
+them from the output via \code{1 / diff(ts)[1]} and \code{nrow(.)}.
 }
 }
 \description{

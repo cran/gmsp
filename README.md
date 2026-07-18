@@ -23,17 +23,16 @@ On top of that pipeline the package provides
 * IMF decomposition through one of three engines — EMD, EEMD, or VMD
   (default) — with optional band-rule mode filtering and per-IMF
   metrics (center frequency, bandwidth, relative energy);
-* elastic SDOF response spectra (PSA / PSV / SD) from canonical `TSL`
-  through `TSL2PS()`, by exact state-space integration of the 2D oscillator
-  equation with `expm(A·dt)` over a user-supplied period grid, including
-  optional `D50` horizontal spectra;
+* elastic SDOF domain-normalised spectra (PSA / PSV / SD) from the independent
+  acceleration / velocity / displacement rows of canonical `TSL` through
+  `TSL2PS()`, by exact state-space integration of the 2D oscillator equation
+  with `expm(A·dt)` over a user-supplied period grid, including optional D50
+  and D100 horizontal spectra;
 * a per-record table of intensity measures from a long TSL input —
   PGA / PGV / PGD, RMS, zero-crossings, Arias intensity and its
   positive / negative variants AI / AIu / AId, three significant-
   duration measures D5–95 / D5–75 / D20–80, CAV and CAV5, mean
-  period Tm, and the derived indices EPI and PDI;
-* Newmark-Jibson rigid-block sliding displacement from an input
-  acceleration trace and a critical seismic coefficient.
+  period Tm, and the derived indices EPI and PDI.
 
 A provider-format indexing layer parses six raw record formats —
 PEER NGA-W2 AT2, CESMD V2 / V2c, NWZ V2A, Geological Survey of
@@ -53,7 +52,7 @@ does not assume a specific filesystem root.
 Requires **R >= 4.1.0**.
 
 ```r
-# Stable release (once on CRAN):
+# Stable release:
 install.packages("gmsp")
 
 # Development version:
@@ -70,9 +69,14 @@ Indexing layer: `readAT2()`, `readV2()`, `readV2A()`, `readAC()`,
 `readTR()`, `readTwoCol()`, `parseRecord()`, `mapComponents()`,
 `alignComponents()`, `extractRecord()`, `archiveRawOwner()`,
 `buildRawFileTable()`, `buildRawRecordTable()`,
-`buildRawIntensityTable()`, `buildMaster()`, `selectRecords()`,
+`buildRawIntensityTable()`, `selectRecords()`,
 `writeSelection()`, `readAT()`, `getRawIntensities()`,
 `auditSite()`, `auditDistances()`, `auditParsers()`.
+
+Project pipeline wrappers: `runSelect()`, `runGMSP()`, `runProcess()`,
+`runTrim()`, `runIMF()`, `runPSA()`, `runPlot()`, `runMatch()`, and
+`runExport()` execute the installed JSON-driven pipeline runners from a
+project root.
 
 Full reference: `help(package = "gmsp")` or
 <https://averriK.github.io/gmsp/reference/>.
@@ -104,23 +108,13 @@ Rendered documentation: <https://averriK.github.io/gmsp/>.
 
 ## Citation
 
-```bibtex
-@Manual{VerriKozlowski_gmsp,
-  title  = {{gmsp}: Ground Motion Signal Processing},
-  author = {Verri Kozlowski, Alejandro},
-  year   = {2017},
-  note   = {R package version 0.4.4},
-  url    = {https://averriK.github.io/gmsp/}
-}
+```r
+citation("gmsp")
 ```
 
 ## License
 
 MIT - see [LICENSE](LICENSE).
-
-## Getting help
-
-Open an issue at <https://averriK.github.io/gmsp/>.
 
 ## Author
 

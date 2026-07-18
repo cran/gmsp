@@ -2,12 +2,12 @@
 % Please edit documentation in R/auditSite.R
 \name{auditSite}
 \alias{auditSite}
-\title{Audit site / station information in the master table -- sanity v1.}
+\title{Audit site / station information in a record metadata table.}
 \usage{
 auditSite(DT, vs30Low = 50, vs30High = 3000)
 }
 \arguments{
-\item{DT}{master \code{data.table}.}
+\item{DT}{record metadata \code{data.table}.}
 
 \item{vs30Low}{lower physical cutoff for \code{StationVs30} (m/s).}
 

@@ -1,9 +1,9 @@
-#' Select records from the master, keyed at the record level.
+#' Select records from a record metadata table.
 #'
-#' Filters [buildMaster()] output by any combination of `RecordID`,
-#' `EventID`, `StationID`, `OwnerID`, then deduplicates to one row per
-#' record. Output is the canonical selection shape consumed by
-#' the [readTS()] family ([readAT()] / [readVT()] / [readDT()]) and
+#' Filters a record metadata table by any combination of `RecordID`,
+#' `EventID`, `StationID`, and `OwnerID`, then deduplicates to one row
+#' per record. Output is the canonical selection shape consumed by the
+#' [readTS()] family ([readAT()] / [readVT()] / [readDT()]) and
 #' [writeSelection()].
 #'
 #' Filter args are character vectors (length 1+). `NULL` means "no
@@ -16,7 +16,7 @@
 #' selectRecords(M[EventMagnitude > 7 & Repi < 100 & PGA > 600 & DIR == "H1"])
 #' ```
 #'
-#' @param M         master `data.table` (output of [buildMaster()]).
+#' @param M         record metadata `data.table`.
 #' @param RecordID  character. Filter by `RecordID`. Default `NULL`.
 #' @param EventID   character. Filter by `EventID`. Default `NULL`.
 #' @param StationID character. Filter by `StationID`. Default `NULL`.

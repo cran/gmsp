@@ -1,4 +1,4 @@
-#' Audit distances in the master table -- sanity v1.
+#' Audit distances in a record metadata table.
 #'
 #' Flags each row with the FIRST applicable reason from a fixed
 #' precedence: lat/lon NA, lat/lon out of range, depth negative,
@@ -8,7 +8,7 @@
 #' Does NOT read `record.json` or provider flatfiles. Comparison against
 #' raw/flatfile distances is deferred to v2.
 #'
-#' @param DT           master `data.table`.
+#' @param DT           record metadata `data.table`.
 #' @param repiOutlier  threshold in km above which `Repi` is
 #'                     flagged (default 5000).
 #' @return `data.table` of flagged rows with column `Reason`.

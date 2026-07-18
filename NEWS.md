@@ -1,7 +1,203 @@
+# gmsp 0.7.1
+
+## Corrected domain normalisation in `TSL2PS()`
+
+* `TSL2PS()` now applies the normalised SDOF operator
+  `omega_n^2 H_d` independently to acceleration (`AT`), velocity (`VT`), and
+  displacement (`DT`). `PSA`, `PSV`, and `SD` therefore retain acceleration,
+  velocity, and displacement units, respectively.
+* PSA is bit-for-bit unchanged. The positive-period PSV and SD ordinates are
+  corrected incompatibly; `Tn = 0` PGA/PGV/PGD anchors, table schemas,
+  metadata, D50/D100, and scalar/vector damping interfaces are unchanged.
+* The spectral-matching selection, modal loss, and suite scaling continue to
+  consume PSA only and therefore produce the same decisions and factors.
+  Existing full `PSW.csv` products must be regenerated before republishing
+  PSV or SD values. No legacy mode or fallback is provided.
+
+## Spectral-match algorithm graduated to the exported API
+
+* New `fitModalFactor()`: per-record modal shaping (released modal
+  amplitudes fitted against the target band, energy restoration after
+  the modal objective) — the algorithm behind `shape.modalFactor` in
+  the match JSON contract.
+* New `fitRecordFactor()`: suite-level record scaling (bounded QP
+  solve, one scale coefficient per record, global band-conditioned
+  objective) — the algorithm behind `shape.recordFactor`.
+* New `matchCompatibility()`: per-record and suite compatibility
+  diagnostics of the scaled spectra against the target band.
+* `scripts/match/setup.R` now delegates the algorithm core to these
+  functions and keeps only orchestration and product materialization.
+  Pipeline products are byte-identical to 0.6.0 (Tier-2 identity
+  harness: per-record, suite, and full-pipeline stages).
+* No JSON contract change; `stage.csv` keeps its frozen product labels.
+
+# gmsp 0.6.0
+
+## runStage0: spectral record selection pipeline
+
+* New `runStage0()` runner and `scripts/selection/runStage0.R`: builds a
+  spectrally compatible selection from the processed candidate pool,
+  scoring PSA against the target compatibility band declared in the
+  match JSON. Driven by the same site JSON as `runMatch()` via a new
+  `stage0.N` key; writes `selection.csv`, the score table, and a
+  reusable per-pool spectra cache into `dirname(path.selection)`.
+* Seismological screening surface on the `candidate` block:
+  `pool` (a broad `runSelect` output as candidate pool), `filter`
+  (numeric min/max ranges over MasterIndex columns), `exclude`
+  (RecordID blacklist), and `oneRecordPerEvent` (keeps the best
+  band-ranked record per event).
+* Removed the IM-based candidate ranking surface from `runMatch`
+  (`candidate.rank`, `candidate.rankOCID`, `candidate.maxRecords`) and
+  the `shape.recordFactor.batchSize` key: selection belongs to
+  `runSelect`/`runStage0`, and the V4 global solve has no batches.
+
+## runMatch V4: band-conditioned suite scaling
+
+* Stage B now solves one global quadratic objective that combines the
+  target-normalized mean spectral residual with a compatibility-envelope
+  containment term over the scaled per-record spectra
+  (`shape.bandWeight`, default 2). The batched box-only solve is retired:
+  the band term makes the global system well-posed, so
+  `shape.recordFactor.batchSize` is accepted but ignored.
+* `shape.recordFactor.min`/`max` are now optional backstop bounds
+  (defaults 0 and unbounded). Record-scale coefficients are conditioned
+  by the envelope term instead of artificial box saturation.
+* New `shape.deficitWeight` (default 1 = symmetric): weights suite-mean
+  deficit residuals more than exceedance when the acceptance criterion
+  requires the mean spectrum not to fall below the target.
+* `match/stage.csv` publishes `bandWeight`, `insideFraction`,
+  `meanViolation`, and `maxViolation` with `mode = global`. The batch
+  products `match/preflight.csv` and `match/blocks.csv` are removed
+  (no readers existed; `scale.csv` and `stage.csv` carry the contract).
+* New Stage A QA product `match/shaping.csv`: per-record shaped/source
+  PSA ratio summary at the target grid (`minRatio`, `TnAtMin`,
+  `medianRatio`, `maxRatio`). This exposes spectral-content loss caused
+  by modal-set truncation (for example removing the lowest-frequency VMD
+  mode), which previously surfaced only as Stage B bound saturation.
+* Per-record match spectra now include the source-signal spectrum
+  (`kind = "source"`) alongside `start` and `final`.
+
+# gmsp 0.5.1
+
+## Parallel process architecture
+
+* Planning track opened for the 0.5.1 architecture change: singular helpers
+  process one record serially, plural helpers orchestrate record sets and own
+  parallel execution.
+* Scope includes the future `processRecord()` / `processRecords()` producer
+  flow and parallelized PSA, plot, and match consumers.
+* Added the first consumer-side implementation cut:
+  `buildPSARecords()` orchestrates PSA records, `matchRecords()` orchestrates
+  match records, and `runPlot.R` can parallelize explicit plot units without
+  changing output names or product folders.
+* Added `examples/scripts/process/runProcess.R`, a composed producer runner for
+  raw-to-`ProcessID` suites. The serial `processRecord()` unit writes only
+  record-local products; `processRecords()` owns parallel orchestration and
+  shared process table publication.
+* Added canonical `examples/scripts/psa/runPSA.R` and `runPSA.json` entry
+  points. `runBuildPSA.R` / `runBuildPSA.json` remain compatible for existing
+  scripts.
+* Added exported project runner wrappers: `runSelect()`, `runGMSP()`,
+  `runProcess()`, `runTrim()`, `runIMF()`, `runPSA()`, `runPlot()`,
+  `runMatch()`, and `runExport()`. These resolve project JSON paths from the
+  supplied project root while executing the installed `gmsp` runner scripts.
+* Clarified the plot boundary: `runPlot()` is an optional raw QA/debug
+  htmlwidget runner. SRK publication plots are rendered outside `gmsp` from
+  materialized `gmsp` CSV products.
+* Removed worker counts from JSON contracts. Runners own worker-count policy;
+  JSON keeps only processing parameters and `parallel`.
+* `runSelect` can now derive its PGA selection window from a `runMatch`
+  target and `shape.recordFactor` bounds through `path.matchConfig`, avoiding
+  duplicated absolute PGA thresholds in selection JSON.
+* `runMatch` Stage B now solves bounded record-scale factors in a
+  batch/preflight mode. It writes `match/scale.csv`, `match/stage.csv`,
+  `match/preflight.csv`, and `match/blocks.csv` alongside modal diagnostics.
+* Promoted component mapping metadata to durable `ComponentMapTable.csv`
+  process/global tables. Legacy `OCIDMAP.csv` remains only for stage
+  checkpoints and folder-mode match/export packages.
+* Closed the plot product classification: `TS` and `PS` are suite-level plots;
+  `TSI` and `PSI` are per-record plots.
+* Removed the fossil `cropRecord()` export and its generated documentation.
+* Removed non-production helpers from the exported surface:
+  `hydrateEventNameUSGS()`, `auditEventNameUSGS()`, `TSL2ND()`, and
+  `rotateComponents()`. Event-name hydration moved to operational
+  database metadata scripts; Newmark-displacement work remains outside the
+  exported package surface; production component rotation is owned by
+  `mapComponents()`.
+
+# gmsp 0.5.0
+
+## Database process products
+
+* Added the current database process-product contract for scripts:
+  `process/<ProcessID>/process.json`, `process/<ProcessID>/MasterIndex.csv`,
+  `process/<ProcessID>/IntensityTable.csv`, record-local products under
+  `records/<OwnerID>/<EventID>/<StationID>/<ProcessID>/`, and regenerated
+  global process tables under `index/`.
+* Added record-access helpers used by the example pipelines:
+  `selectRecords()`, `getRecord()`, `getRecords()`, `writeProcessTables()`,
+  `updateProcessContract()`, and `buildProcessIndex()`.
+* Updated the selection, GMSP, trim, IMF, PSA, plot, match, and export example
+  runners to consume the database/process contract instead of legacy source
+  folders.
+* `runMatch` now writes a clean product tree with `data/`, `metadata/`,
+  `match/`, `plot/`, and `audit/`; it no longer writes per-record `.work`
+  products or `META.csv`.
+* `runExport` remains a packager, not a producer. It exports flat time-series
+  CSV files, preserves `metadata/MasterIndex.csv` and
+  `metadata/selection.csv`, and copies official `plot/` and `audit/` HTML
+  trees without regenerating them.
+* `buildMaster()` / `writeMaster()` now support the current raw master index
+  workflow and preserve available event metadata such as `EventName` for
+  downstream selection and export products.
+
+# gmsp 0.4.7
+
+## Time-series crop helpers
+
+* `cropRecord(.x, t0, t1, reset = TRUE)` crops canonical `TSL` or `TSW`
+  records by explicit time bounds and returns the same table shape as the
+  input. It does not inspect signal amplitudes, does not trim literal zeros,
+  and does not compute cumulative-intensity windows.
+
+## Constructor cleanup
+
+* `AT2TS()`, `VT2TS()`, and `DT2TS()` no longer use `match.call()` and the
+  local `HasKNyq` flag to distinguish automatic STFT selection from explicit
+  `kNyq`. The required branch is preserved directly with `missing(kNyq)`.
+* `AT2TS(flatZeros = TRUE)` now flattens external acceleration tails to exact
+  zeros using per-channel normalized acceleration amplitude before optional
+  trimming. `Astop0 = 1e-3` corresponds to threshold `10` after PGA is
+  normalized to `10000`. `trimZeros = TRUE` trims the union of component
+  supports, not the intersection. The default path without `flatZeros` /
+  `trimZeros` is unchanged.
+* The constructor `auditSTFT()` blocks were simplified by removing one-use
+  local metadata variables while preserving audit behavior and warnings.
+* The final `TSL` packing code no longer creates one-use local `id.vars` and
+  `measure.vars` variables. The actual `data.table::melt()` arguments remain
+  named as `id.vars` and `measure.vars`.
+* The finite-output guard before returning `TSL` is retained but compacted;
+  this release does not change the constructor output or failure contract.
+
 # gmsp 0.4.6
 
 ## New exported functions
 
+* `TSL2AI()`, `TSL2CAV()`, `TSL2CAV5()`, and `TSL2ND()` compute
+  time-indexed relative cumulative histories from canonical acceleration
+  `TSL` rows. These helpers are intentionally separate objects, not one mixed
+  intensity table: `TSL2AI()` returns `AIW`/`AIL`, `TSL2CAV()` returns
+  `CAVW`/`CAVL`, `TSL2CAV5()` returns `CAV5W`/`CAV5L`, and `TSL2ND()`
+  returns `NDW`/`NDL`.
+* Wide output returns `<metadata>, t, <OCID columns>` with ratios
+  `value(t) / max(value)` in the component columns. Long output returns
+  `<metadata>, OCID, t, ratio`. `TSL2ND()` also includes `kh` in both output
+  shapes. Absolute final values remain the responsibility of `TSL2IM()` /
+  `getIntensity()`.
+* `TSL2ND(..., kh = 0.05)` interprets `kh` as a fraction of each
+  record/component PGA: `ac = kh * PGA`, `ky = ac / g`. This matches the
+  historical `DN05` convention and avoids fixed critical accelerations that
+  can produce zero Newmark displacement for many records.
 * `TSL2PS(.x, xi = 0.05, Tn = NULL, output = "PSL",
   D50 = FALSE, D100 = FALSE, nTheta = 180L)` is the explicit
   response-spectrum helper for canonical `TSL` tables produced by
@@ -89,9 +285,8 @@
   `componentMap` and `rotate` attributes; rotated outputs also preserve
   `theta`.
 * `filterIMF()` has been moved out of the exported package surface to
-  `dev/legacy/filterIMF.R`. No current callers were detected in `gmsp`,
-  `AR-S2J2J`, or `AR-SABP0.R`; users should compose filtering workflows
-  directly from canonical `TSL`, `TS2IMF()`, and `TSL2PS()`.
+  `dev/legacy/filterIMF.R`. Users should compose filtering workflows directly
+  from canonical `TSL`, `TS2IMF()`, and `TSL2PS()`.
 * The 0.4.x spectra path is closed around canonical `TSL` consumption:
   spectra code should call `TSL2PS()`, not `TS2PS()` with `BY`, `COL.s`,
   `COL.t`, and `COL.ID`.
@@ -123,18 +318,11 @@
   Positional calls with both arguments, such as `readAT(SEL, RecordsDir)`,
   remain valid. The same `.x` / `path` rule applies to `readVT()` and
   `readDT()`; do not update callers to keep `recordsDir =`.
-* `buildMaster()` now uses `path` for the index root:
-
-  ```r
-  # before
-  buildMaster(indexDir = IndexDir, owners = Owner)
-
-  # after
-  buildMaster(path = IndexDir, owners = Owner)
-  ```
-
-  Positional calls such as `buildMaster(IndexDir, owners = Owner)` remain
-  valid. Named callers must not keep `indexDir =`.
+* `buildMaster()` has been removed from the exported package surface. It
+  joined project-local database index tables and encoded source-precedence
+  decisions that belong in downstream project scripts, not in the signal
+  processing library. Project pipelines should own their master-table builder
+  locally and pass the resulting selection tables to `readTS()` / `readAT()`.
 * `buildRawFileTable()` now uses `path.records` for the records root and
   `path.index` for the index root:
 
@@ -178,7 +366,7 @@
 
   Named callers must not keep `stationDir =` or `selectionDir =`.
 * `parseRecord()` and `extractRecord()` now use `.x` for the one-record
-  master subset and `path` for the records root:
+  metadata subset and `path` for the records root:
 
   ```r
   # before
@@ -193,7 +381,7 @@
   Positional calls with both arguments, such as `extractRecord(Rows,
   RecordsDir)`, remain valid. Named callers must not keep `masterRows =` or
   `recordsDir =`.
-* `auditParsers()` now uses `.x` for the master table, `owner` for one
+* `auditParsers()` now uses `.x` for the record metadata table, `owner` for one
   OwnerID, and `path` for the records root:
 
   ```r
@@ -365,11 +553,9 @@
   Provider records are canonicalized to the documented RawFileTable
   schema before binding; absent canonical provider fields are emitted
   as typed `NA` columns.
-* `buildMaster()` no longer uses `rbindlist(fill = TRUE)` across owner
-  outputs. Per-owner master tables must share the same schema before
-  binding.
-* `wideTrunc()` was removed. It had no internal callers and no detected
-  callers in the checked consumer projects (`AR-S2J2J`, `AR-SABP0.R`).
+* `buildMaster()` was retired from the package API; project-specific owner
+  joins now belong in downstream scripts.
+* `wideTrunc()` was removed. It had no internal callers.
 * Local-only style cleanup renamed STFT/audit temporaries in
   `AT2TS()`, `VT2TS()`, `DT2TS()`, `auditSTFT()`, and `.ffilter()`
   without changing public interfaces. The internal source file
@@ -407,12 +593,8 @@ processed AT / VT / DT time series — lives in one place.
   `DIR` / `OCID` / `NP` / `PGA` / `dt` / `Fs` / `Units` metadata.
   `RecordID` is the first 16 hex chars of the WIDE-CSV md5 hash.
 * **Indexing**: `buildRawFileTable()`, `buildRawRecordTable()`,
-  `buildRawIntensityTable()`, `buildMaster()` (joins record / event /
-  station / intensity tables with haversine `Repi` and
-  source-precedence `fcoalesce` for event scalars; the
-  provider-flatfile + USGS catalog join `buildEventTable()` is still
-  under development and ships in `inst/dev/`, not yet in the
-  exported API).
+  `buildRawIntensityTable()`. Project-specific event / station joins
+  and master-table assembly are intentionally outside the exported API.
 * **Selection / IO**: `selectRecords()`, `writeSelection()`,
   `readAT()` (loads `raw/AT.<RecordID>.csv` back into the shape
   `AT2TS()` expects), `getRawIntensities()`.
@@ -432,9 +614,9 @@ processed AT / VT / DT time series — lives in one place.
 
 * **Required paths.** `parseRecord()`, `extractRecord()`,
   `buildRawFileTable()`, `buildRawRecordTable()`,
-  `buildRawIntensityTable()`, `buildMaster()`, `auditParsers()`,
+  `buildRawIntensityTable()`, `auditParsers()`,
   `writeSelection()` and `readAT()` no longer carry hard-coded
-  `~/kashimaDB/...` defaults for their path arguments
+  developer-specific defaults for their path arguments
   (`recordsDir` / `indexDir` / `selectionDir`). The path is now a
   required argument; the function fails fast with a clear "argument
   ... is missing" error if not supplied, rather than silently

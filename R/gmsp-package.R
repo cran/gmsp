@@ -3,11 +3,10 @@
 #' Tools for processing strong-motion records: STFT-based pipeline for
 #' consistent acceleration/velocity/displacement time series, IMF
 #' decomposition (EMD/EEMD/VMD), elastic SDOF response spectra, intensity
-#' measures (PGA, PGV, AI, CAV, duration metrics), and Newmark sliding-block
-#' displacement. Also includes parsers for common strong-motion record
-#' formats (PEER NGA-W2 AT2, CESMD V2/V2c, two-column ASCII) and helpers
-#' to index parsed records into per-record CSV/JSON pairs and a master
-#' record catalog.
+#' measures (PGA, PGV, AI, CAV, duration metrics), and parsers for common
+#' strong-motion record formats (PEER NGA-W2 AT2, CESMD V2/V2c, two-column
+#' ASCII) and helpers to index parsed records into per-record CSV/JSON pairs
+#' and a master record catalog.
 #'
 #' @keywords internal
 #' @name gmsp-package
@@ -31,7 +30,7 @@ TARGET_UNITS <- "mm"
 ## names) collected here so that R CMD check does not flag them as undefined.
 utils::globalVariables(c(
   ## data.table internals
-  ".", ".N", ".SD", ":=", "i",
+  ".", ".N", ".SD", ":=", "i", "N",
   "..COLS.event", "..COLS.station", "..KEEP",
 
   ## time-series core
@@ -51,11 +50,6 @@ utils::globalVariables(c(
 
   ## spectra tables
   "Tn", "S", "xi",
-
-  ## Newmark
-  "Dn", "ky", "kmax95", "kmax05", "kh95", "kh05",
-  "DN05", "DN10", "DN15", "DN20", "DN25",
-  "DN30", "DN40", "DN50", "DN75",
 
   ## IMF
   "IMF", "NIMF", "NIT", "namp", "residue", "signal.R",

@@ -7,7 +7,7 @@
 auditParsers(.x, owner, path)
 }
 \arguments{
-\item{.x}{master \code{data.table} from \code{buildMaster()}.}
+\item{.x}{record metadata \code{data.table}.}
 
 \item{owner}{one OwnerID string.}
 
@@ -18,7 +18,7 @@ auditParsers(.x, owner, path)
 \code{data.table(OwnerID, EventID, StationID, status, reason)}.
 }
 \description{
-Iterates the master subset for \code{owner}, calls \code{parseRecord} per
+Iterates a record metadata subset for \code{owner}, calls \code{parseRecord} per
 unique \verb{(EventID, StationID)}, catches errors, and returns a status
 table.
 }

@@ -390,8 +390,8 @@ take explicit <code>path</code>, <code>path.records</code>, or
   RawFileTable.&lt;OwnerID&gt;.csv                       provider file inventory
   RawRecordTable.&lt;OwnerID&gt;.csv                     one row per RecordID
   RawIntensityTable.&lt;OwnerID&gt;.csv                  per (RecordID, DIR), 20 IM scalars
-  EventTable.&lt;OwnerID&gt;.csv                         event metadata
-  StationTable.&lt;OwnerID&gt;.csv                       station metadata
+  EventTable.&lt;OwnerID&gt;.csv                         project-owned event metadata
+  StationTable.&lt;OwnerID&gt;.csv                       project-owned station metadata
 
 &lt;selectionDir&gt;/                                    ← you choose this
   &lt;name&gt;.csv                                       writeSelection() output
@@ -509,7 +509,8 @@ extractRecord()     ── scales to canonical mm via .parseUnits + .getSF
 <code>mapComponents()</code> are public so they can be reused or
 audited. Public calls use <code>parseRecord(.x, path)</code> and
 <code>extractRecord(.x, path)</code>, where <code>.x</code> is the
-one-record master subset and <code>path</code> is the records root.</p>
+one-record metadata subset and <code>path</code> is the records
+root.</p>
 </div>
 <div id="indexing-tables" class="section level2">
 <h2>Indexing tables</h2>
@@ -529,29 +530,34 @@ per <code>ComponentID × FileID</code>); reads
 record (one per <code>DIR</code>), each carrying the 20 AT-derivable
 scalars from <code>getIntensity()</code>.</li>
 </ul>
-<p>The provider-flatfile + USGS catalog join
-(<code>buildEventTable()</code>) is under development and ships in
-<code>inst/dev/</code>; it is not yet part of the exported API.</p>
+<p>Provider-flatfile catalog maintenance is owned by the database tree.
+Those helpers are project/database operational code; they are not
+<code>gmsp</code> package APIs.</p>
 </div>
-<div id="master-record-catalog" class="section level2">
-<h2>Master record catalog</h2>
-<p><code>buildMaster()</code> joins, per owner:</p>
+<div id="project-owned-record-catalog" class="section level2">
+<h2>Project-owned record catalog</h2>
+<p><code>gmsp</code> does not export a master-catalog builder. Event and
+station metadata come from provider flatfiles, external catalogs, and
+project-specific precedence rules, so the join belongs in the downstream
+project that owns the database.</p>
+<p>A project-level master table commonly joins, per owner:</p>
 <ul>
 <li><code>RawRecordTable.&lt;O&gt;.csv</code> (record list),</li>
-<li><code>EventTable.&lt;O&gt;.csv</code> (event scalars, merged via
-<code>fcoalesce</code> with source precedence <code>*.owner</code> &gt;
-<code>*.USGS</code> &gt; <code>*.ISC</code>),</li>
+<li><code>EventTable.&lt;O&gt;.csv</code> (event scalars, with
+project-defined source precedence),</li>
 <li><code>StationTable.&lt;O&gt;.csv</code> (station scalars including
 Vs30),</li>
+<li><code>RawIntensityTable.&lt;O&gt;.csv</code> (per-direction
+intensity scalars),</li>
 </ul>
 <p>and emits a <code>data.table</code> keyed at
-<code>(RecordID, DIR)</code>. It adds:</p>
+<code>(RecordID, DIR)</code>. It usually adds:</p>
 <ul>
 <li><code>Repi</code> — epicentral distance (haversine, km),</li>
 <li><code>Rhyp</code> — hypocentral distance, <span class="math inline">\(\sqrt{\mathrm{Repi}^2
 + \mathrm{EventDepth}^2}\)</span> (km).</li>
 </ul>
-<p>After <code>buildMaster()</code> you can filter the master and pass
+<p>After the project has built that table, you can filter it and pass
 the subset to <code>selectRecords()</code> to produce a
 <code>(RecordID, OwnerID, EventID, StationID)</code> selection, which is
 the input contract for the <code>readTS()</code> family —
@@ -564,7 +570,7 @@ orchestration).</p>
 <div id="composing-with-the-processing-core" class="section level2">
 <h2>Composing with the processing core</h2>
 <p>The natural composition for acceleration records is:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>M   <span class="ot">&lt;-</span> <span class="fu">buildMaster</span>(<span class="at">path =</span> <span class="st">&quot;&lt;your index path&gt;&quot;</span>)</span>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>M <span class="ot">&lt;-</span> your_project_master_table</span>
 <span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>Selection <span class="ot">&lt;-</span> <span class="fu">selectRecords</span>(M[EventMagnitude <span class="sc">&gt;</span> <span class="dv">7</span> <span class="sc">&amp;</span> Repi <span class="sc">&lt;</span> <span class="dv">100</span> <span class="sc">&amp;</span> DIR <span class="sc">==</span> <span class="st">&quot;H1&quot;</span>])</span>
 <span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>TS  <span class="ot">&lt;-</span> <span class="fu">readAT</span>(<span class="at">.x =</span> Selection, <span class="at">path =</span> <span class="st">&quot;&lt;your records path&gt;&quot;</span>)</span>
 <span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>ATS <span class="ot">&lt;-</span> TS[, <span class="fu">AT2TS</span>(.SD, <span class="at">units.source =</span> <span class="st">&quot;mm&quot;</span>, <span class="at">Fmax =</span> <span class="dv">25</span>),</span>
@@ -602,9 +608,8 @@ original.</p>
 <ul>
 <li>The package does <strong>not</strong> download data. Bringing raw
 provider files to <code>raw.owner/</code> is the user’s responsibility.
-Examples under <code>examples/maintenance/</code> in the source
-repository show a pattern for ingestion (USGS catalog matching, staging
-/ promote / rollback, etc.).</li>
+Ingestion workflows such as catalog matching, staging, promotion, and
+rollback belong in the project-owned database tree.</li>
 <li><code>RecordID</code> is a 16-character hex hash
 (<code>openssl::md5</code> of the WIDE CSV body, truncated). It is
 stable across re-extraction of the same record.</li>

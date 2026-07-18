@@ -37,6 +37,7 @@ canonicalizes
 CAV
 CENA
 changelog
+checkpointed
 centric
 CESMD
 CHA
@@ -54,6 +55,7 @@ dB
 DC
 DC's
 dcasts
+ddot
 de
 deduplicated
 deduplicates
@@ -131,12 +133,14 @@ HHN
 hht
 HHZ
 Hilbert
+htmlwidget
 Housner
 Houston
 Husid
 hypocentral
 Hz
 IGP
+ij
 IM
 IMF
 IMFs
@@ -180,6 +184,7 @@ lowpass
 LP
 ly
 mathbb
+MasterIndex
 mathbf
 mathrm
 md
@@ -239,8 +244,10 @@ pracma
 pre
 Pre
 preallocate
+preflight
 prepend
 preprocessor
+preselection
 PSA
 PSD
 PSV
@@ -249,6 +256,7 @@ purrr
 qquad
 quantisation
 quantised
+QP
 Rabiner
 Rathje
 rationalised
@@ -256,15 +264,20 @@ RawFileTable
 RawIntensityTable
 RawRecordTable
 README
+Rds
 reanalyses
 reanalysis
 reconstructable
+RecordID
+RecordIDs
 regridding
 regularisation
 regularised
 reorganised
 reparse
 Repi
+renderer
+reproducibly
 resample
 resamples
 resampling
@@ -279,6 +292,8 @@ roxygen
 rspa
 RSN
 runnable
+runMatch
+runStage
 Sa
 SCEDC
 Schafer
@@ -292,6 +307,7 @@ Shih
 SoT
 schemas
 spectral
+spectrally
 spectrogram
 standardise
 standardised
@@ -299,6 +315,7 @@ stdft
 STFT
 Stopband
 STREC
+SRK
 stringr
 subdirs
 Subduction

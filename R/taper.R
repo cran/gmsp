@@ -1,4 +1,23 @@
 
+.flattenA <- function(x, Astop = 1e-4) {
+  stopifnot(is.vector(x))
+  n <- length(x)
+  Xo <- max(abs(x))
+
+  if (!is.finite(Xo) || Xo <= .Machine$double.eps) {
+    return(rep(1, n))
+  }
+
+  idx <- which(abs(x) / Xo >= Astop)
+  if (length(idx) < 2L) {
+    return(rep(1, n))
+  }
+
+  Wo <- numeric(n)
+  Wo[min(idx):max(idx)] <- 1
+  Wo
+}
+
 
 .taperA <- function(x, Astop = 1e-4, Apass = 1e-3) {
   stopifnot(is.vector(x))
@@ -73,4 +92,3 @@
     return(rep(1, n))
   })
 }
-

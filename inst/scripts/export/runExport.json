@@ -1,0 +1,18 @@
+{
+  "path": {
+    "source": "gmsp/match/example",
+    "out": "gmsp/export/example",
+    "index": "gmsp/index/MasterIndex.csv",
+    "selection": "gmsp/match/example/metadata/selection.csv",
+    "plot": [
+      "gmsp/match/example/plot"
+    ],
+    "audit": [
+      "gmsp/match/example/audit"
+    ]
+  },
+  "recordID": null,
+  "ID": ["AT", "VT", "DT", "AI", "CAV", "CAV5"],
+  "DIR": ["H1", "H2", "UP"],
+  "override": false
+}

@@ -97,10 +97,10 @@ VT2TS <- function(
   # === LOGGING: Initial state ===
   if (verbose) {
     cat("\n=== VT2TS PROCESSING START ===\n")
-    if (verbose) cat(sprintf("Initial: NP=%d\n", NP))
-    if (verbose) cat(sprintf("FLAGS: isRaw=%s resample=%s flatZeros=%s detrend=%s\n",
+    cat(sprintf("Initial: NP=%d\n", NP))
+    cat(sprintf("FLAGS: isRaw=%s resample=%s flatZeros=%s detrend=%s\n",
       isRaw, resample, flatZeros, detrend))
-    if (verbose) cat(sprintf("PARAMS: Fmax=%.0f NW=%d OVLP=%.0f\n", Fmax, NW, OVLP))
+    cat(sprintf("PARAMS: Fmax=%.0f NW=%d OVLP=%.0f\n", Fmax, NW, OVLP))
   }
 
   t <- X[["t"]]
@@ -163,8 +163,8 @@ VT2TS <- function(
         x * SFU
       }))]
       names(X) <- OCID
-      LOG <- max(abs(as.matrix(X)), na.rm = TRUE)
-      if (verbose) cat(sprintf("After units: Vo=%.3e\n", LOG))
+      if (verbose) cat(sprintf("After units: Vo=%.3e\n",
+        max(abs(as.matrix(X)), na.rm = TRUE)))
     }
   }
 
@@ -192,20 +192,19 @@ VT2TS <- function(
 
   ## STFT Strategy and Resample ----
   # Get optimal STFT parameters
-  if (verbose) if (verbose) cat(sprintf("\n=== STFT STRATEGY (resample=%s) ===\n", resample))
-  HasKNyq <- "kNyq" %in% names(as.list(match.call()))
-  if (HasKNyq) {
-    STFTParams <- .setSTFT(NP = NP, Fs = Fs, Fmax = Fmax, kNyq = kNyq,
+  if (verbose) cat(sprintf("\n=== STFT STRATEGY (resample=%s) ===\n", resample))
+  if (missing(kNyq)) {
+    STFTParams <- .setSTFT(NP = NP, Fs = Fs, Fmax = Fmax,
       NW.min = NW, MW.min = 16, OVLP = OVLP)
   } else {
-    STFTParams <- .setSTFT(NP = NP, Fs = Fs, Fmax = Fmax,
+    STFTParams <- .setSTFT(NP = NP, Fs = Fs, Fmax = Fmax, kNyq = kNyq,
       NW.min = NW, MW.min = 16, OVLP = OVLP)
   }
 
   # Extract optimal parameters
   if (verbose) {
-    if (verbose) cat(sprintf("Strategy: %s\n", STFTParams$strategy))
-    if (verbose) cat(sprintf("Before: NW=%d OVLP=%.0f Fs=%.0f\n", NW, OVLP, Fs))
+    cat(sprintf("Strategy: %s\n", STFTParams$strategy))
+    cat(sprintf("Before: NW=%d OVLP=%.0f Fs=%.0f\n", NW, OVLP, Fs))
   }
   NW <- STFTParams$NW
   OVLP <- STFTParams$OVLP
@@ -213,17 +212,17 @@ VT2TS <- function(
 
   # Audit STFT and parameters (pre-resample)
   if (audit) {
-    AuditSignal <- as.numeric(X[[1]])
-    DT_audit <- data.table(t = t, s = AuditSignal)
-    HasKNyq <- "kNyq" %in% names(as.list(match.call()))
     aud <- try(
-      if (HasKNyq) {
-        auditSTFT(DT_audit, Fmax = Fmax, kNyq = kNyq, NW.min = NW, MW.min = 16, OVLP = OVLP,
-          ApassLP = ApassLP, AstopLP = AstopLP)
+      if (missing(kNyq)) {
+        auditSTFT(data.table(t = t, s = as.numeric(X[[1]])), Fmax = Fmax,
+          NW.min = NW, MW.min = 16, OVLP = OVLP, ApassLP = ApassLP,
+          AstopLP = AstopLP)
       } else {
-        auditSTFT(DT_audit, Fmax = Fmax, NW.min = NW, MW.min = 16, OVLP = OVLP,
+        auditSTFT(data.table(t = t, s = as.numeric(X[[1]])), Fmax = Fmax,
+          kNyq = kNyq, NW.min = NW, MW.min = 16, OVLP = OVLP,
           ApassLP = ApassLP, AstopLP = AstopLP)
-      }, silent = TRUE)
+      },
+      silent = TRUE)
     if (!inherits(aud, "try-error") && length(aud$warnings)) {
       warning(paste(aud$warnings, collapse = "\n"))
       if (verbose) {
@@ -235,7 +234,7 @@ VT2TS <- function(
 
   # Apply resampling if strategy indicates it's needed
   if (STFTParams$Resample) {
-    if (verbose) if (verbose) cat(sprintf("Resampling %.0f->%.0f Hz (factor=%.2f)\n", Fs, TargetFs, Fs / TargetFs))
+    if (verbose) cat(sprintf("Resampling %.0f->%.0f Hz (factor=%.2f)\n", Fs, TargetFs, Fs / TargetFs))
     OCID <- names(X)
     # Use original dt for anti-alias filter
     X <- .resample(X = X, dt = (1 / Fs), TargetFs = TargetFs, Fmax = Fmax,
@@ -243,8 +242,8 @@ VT2TS <- function(
     names(X) <- OCID
     Fs <- TargetFs
     dt <- 1 / Fs
-    LOG <- max(abs(as.matrix(X)), na.rm = TRUE)
-    if (verbose) if (verbose) cat(sprintf("After resample: Vo=%.3e\n", LOG))
+    if (verbose) cat(sprintf("After resample: Vo=%.3e\n",
+      max(abs(as.matrix(X)), na.rm = TRUE)))
   } else {
     if (verbose) cat("No resampling needed\n")
   }
@@ -390,32 +389,20 @@ VT2TS <- function(
     return(DT)
   }
 
-  ## Summary ----
-  NP <- nrow(AT)
-  ts <- seq(0, dt * (NP - 1), dt)
-  Fs <- 1 / dt
-  df <- Fs / NW
-  fs <- seq(from = 0, by = df, length.out = NW / 2)
-
   ## Pack Time Series  ----
+  ts <- seq(0, dt * (nrow(AT) - 1), dt)
   TSW <- data.table(ts = ts, AT = AT, VT = VT, DT = DT)
   if (identical(output, "TSW")) {
     return(TSW)
   }
 
-  id.vars <- c("ts")
-  measure.vars <- colnames(TSW[, -c("ts")])
-  AUX <- data.table::melt(TSW, id.vars = id.vars, measure.vars = measure.vars)
-  BAD <- !is.finite(AUX[["value"]])
-  if (any(BAD)) {
-    COUNT <- AUX[BAD, .N, by = "variable"]
-    MSG <- paste(
-      sprintf("%s=%d", COUNT[["variable"]], COUNT[["N"]]),
-      collapse = ", "
-    )
+  AUX <- data.table::melt(TSW, id.vars = "ts",
+                          measure.vars = setdiff(names(TSW), "ts"))
+  if (nrow(AUX[!is.finite(value)])) {
     stop(sprintf(
       "VT2TS TSL output requires finite samples; non-finite values by variable: %s.",
-      MSG
+      AUX[!is.finite(value), .N, by = variable][
+        , paste(sprintf("%s=%d", variable, N), collapse = ", ")]
     ), call. = FALSE)
   }
   TSL <- AUX[, .(t = ts, s = value, ID = gsub("\\..*$", "", variable), OCID = gsub("^[^.]*\\.", "", variable))]

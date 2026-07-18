@@ -372,11 +372,16 @@ values: <code>AT -&gt; PSA</code>, <code>VT -&gt; PSV</code>, and
 <code>DT -&gt; SD</code>.</p>
 <p>The reported spectral IDs are:</p>
 <ul>
-<li><code>PSA</code> — pseudo-spectral acceleration,</li>
-<li><code>PSV</code> — pseudo-spectral velocity,</li>
-<li><code>SD</code> — spectral displacement.</li>
+<li><code>PSA</code> — domain-normalised acceleration response from
+<code>AT</code>,</li>
+<li><code>PSV</code> — domain-normalised velocity response from
+<code>VT</code>,</li>
+<li><code>SD</code> — domain-normalised displacement response from
+<code>DT</code>.</li>
 </ul>
-<p>Classic references: Nigam &amp; Jennings (1969), Chopra (2017).</p>
+<p>These are three independent domain operators. They are not three
+classical pseudo-ordinates derived from one oscillator driven only by
+acceleration.</p>
 <div id="input-and-output" class="section level2">
 <h2>Input and output</h2>
 <div id="input" class="section level3">
@@ -431,14 +436,14 @@ metadata. Scalar <code>xi</code> keeps the historical schema without an
 <div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>ps_xi <span class="ot">&lt;-</span> <span class="fu">TSL2PS</span>(tsl[OCID <span class="sc">==</span> <span class="st">&quot;H1&quot;</span>], <span class="at">xi =</span> <span class="fu">c</span>(<span class="fl">0.02</span>, <span class="fl">0.05</span>),</span>
 <span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>                <span class="at">Tn =</span> <span class="fu">c</span>(<span class="fl">0.1</span>, <span class="fl">0.2</span>), <span class="at">output =</span> <span class="st">&quot;PSW&quot;</span>)</span>
 <span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="fu">head</span>(ps_xi)</span>
-<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="co">#&gt;       xi    Tn   PSA.H1     PSV.H1       SD.H1</span></span>
-<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="co">#&gt;    &lt;num&gt; &lt;num&gt;    &lt;num&gt;      &lt;num&gt;       &lt;num&gt;</span></span>
-<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="co">#&gt; 1:  0.02   0.0 487.7138 56.4253259 6.531096805</span></span>
-<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="co">#&gt; 2:  0.02   0.1 493.6305  0.9069311 0.001670949</span></span>
-<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="co">#&gt; 3:  0.02   0.2 579.3027  1.8773197 0.006969010</span></span>
-<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="co">#&gt; 4:  0.05   0.0 487.7138 56.4253259 6.531096805</span></span>
-<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a><span class="co">#&gt; 5:  0.05   0.1 492.8057  0.9069939 0.001671061</span></span>
-<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="co">#&gt; 6:  0.05   0.2 571.3886  1.8754513 0.006929751</span></span></code></pre></div>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="co">#&gt;       xi    Tn   PSA.H1   PSV.H1    SD.H1</span></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="co">#&gt;    &lt;num&gt; &lt;num&gt;    &lt;num&gt;    &lt;num&gt;    &lt;num&gt;</span></span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="co">#&gt; 1:  0.02   0.0 487.7138 56.42533 6.531097</span></span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="co">#&gt; 2:  0.02   0.1 493.6305 56.98416 6.596640</span></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="co">#&gt; 3:  0.02   0.2 579.3027 58.97774 6.878137</span></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="co">#&gt; 4:  0.05   0.0 487.7138 56.42533 6.531097</span></span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a><span class="co">#&gt; 5:  0.05   0.1 492.8057 56.98811 6.597085</span></span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="co">#&gt; 6:  0.05   0.2 571.3886 58.91904 6.839390</span></span></code></pre></div>
 </div>
 </div>
 <div id="sdof-model" class="section level2">
@@ -478,19 +483,32 @@ t}\,\mathbf{y}_{k-1}
 </div>
 <div id="how-psa-psv-sd-are-built" class="section level2">
 <h2>How PSA / PSV / SD are built</h2>
-<p>In the single-signal SDOF worker, after simulation the code takes the
-absolute maximum of displacement (first state):</p>
-<p><span class="math display">\[SD = \max_t |y_1(t)|.\]</span></p>
-<p>It then reports</p>
-<p><span class="math display">\[PSV = \omega_n\,SD, \qquad PSA =
-\omega_n^2\,SD.\]</span></p>
-<p>For canonical <code>TSL</code> input, <code>TSL2PS()</code> runs the
-worker on the matching source series and keeps the matching spectral ID:
-<code>PSA</code> from <code>AT</code>, <code>PSV</code> from
-<code>VT</code>, and <code>SD</code> from <code>DT</code>. The function
-prepends <span class="math inline">\(T_n = 0\)</span> with the
-corresponding peak value (<code>PGA</code>, <code>PGV</code>, or
-<code>PGD</code>).</p>
+<p>Let <span class="math inline">\(d \in \{A,V,D\}\)</span> identify the
+acceleration, velocity, or displacement domain and let <span class="math inline">\(x_d(t)\)</span> be the matching <code>AT</code>,
+<code>VT</code>, or <code>DT</code> input. The worker solves an
+independent state equation in each domain,</p>
+<p><span class="math display">\[
+\ddot z_d + 2\xi\omega_n\dot z_d + \omega_n^2 z_d = x_d(t),
+\]</span></p>
+<p>whose transfer function is</p>
+<p><span class="math display">\[
+H_d(p) = \frac{1}{p^2 + 2\xi\omega_n p + \omega_n^2}.
+\]</span></p>
+<p>gmsp uses the domain-normalised operator</p>
+<p><span class="math display">\[
+G_d(p) = \omega_n^2 H_d(p), \qquad
+S_d(T_n) = \omega_n^2 \max_t |z_d(t)|.
+\]</span></p>
+<p>The multiplier is therefore <span class="math inline">\(\omega_n^2\)</span> in all three branches. If
+<span class="math inline">\(x_d\)</span> has units <span class="math inline">\(U_d\)</span>, the first state has units <span class="math inline">\(U_d\,\mathrm{s}^2\)</span> and <span class="math inline">\(S_d\)</span> retains <span class="math inline">\(U_d\)</span>. Consequently PSA has acceleration
+units, PSV has velocity units, and SD has displacement units. Because
+<span class="math inline">\(z_A\)</span>, <span class="math inline">\(z_V\)</span>, and <span class="math inline">\(z_D\)</span> are responses to different source
+histories, identities such as <span class="math inline">\(PSV = \omega_n
+SD\)</span> do not apply across these columns.</p>
+<p>The function prepends <span class="math inline">\(T_n = 0\)</span>
+with the corresponding unfiltered peak input value: PGA from
+<code>AT</code>, PGV from <code>VT</code>, and PGD from
+<code>DT</code>.</p>
 </div>
 <div id="d50-and-d100-horizontal-spectra" class="section level2">
 <h2>D50 and D100 horizontal spectra</h2>
@@ -514,7 +532,9 @@ spectra:</p>
 </ul>
 <p>D100 is computed independently for each period and spectral ID. The
 angle that maximizes <code>PSA</code> can differ from the angle that
-maximizes <code>PSV</code> or <code>SD</code>.</p>
+maximizes <code>PSV</code> or <code>SD</code>. The <span class="math inline">\(\omega_n^2\)</span> domain normalisation is
+applied to every rotated response before the D50 quantile or D100
+maximum is evaluated.</p>
 <div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>t_d50 <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="dv">0</span>, <span class="dv">1</span>, <span class="at">by =</span> <span class="fl">0.01</span>)</span>
 <span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>at_wide <span class="ot">&lt;-</span> <span class="fu">data.table</span>(</span>
 <span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>  <span class="at">t =</span> t_d50,</span>
@@ -528,26 +548,26 @@ maximizes <code>PSV</code> or <code>SD</code>.</p>
 <span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>rot_psl <span class="ot">&lt;-</span> <span class="fu">TSL2PS</span>(tsl, <span class="at">Tn =</span> <span class="fu">c</span>(<span class="fl">0.1</span>, <span class="fl">0.2</span>),</span>
 <span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a>                  <span class="at">output =</span> <span class="st">&quot;PSL&quot;</span>, <span class="at">D50 =</span> <span class="cn">TRUE</span>, <span class="at">D100 =</span> <span class="cn">TRUE</span>, <span class="at">nTheta =</span> <span class="dv">12</span><span class="dt">L</span>)</span>
 <span id="cb4-13"><a href="#cb4-13" tabindex="-1"></a>rot_psl[OCID <span class="sc">%chin%</span> <span class="fu">c</span>(<span class="st">&quot;D50&quot;</span>, <span class="st">&quot;D100&quot;</span>)]</span>
-<span id="cb4-14"><a href="#cb4-14" tabindex="-1"></a><span class="co">#&gt;       OCID    Tn     ID            S</span></span>
-<span id="cb4-15"><a href="#cb4-15" tabindex="-1"></a><span class="co">#&gt;     &lt;char&gt; &lt;num&gt; &lt;char&gt;        &lt;num&gt;</span></span>
-<span id="cb4-16"><a href="#cb4-16" tabindex="-1"></a><span class="co">#&gt;  1:   D100   0.0    PSA 1.215984e+01</span></span>
-<span id="cb4-17"><a href="#cb4-17" tabindex="-1"></a><span class="co">#&gt;  2:   D100   0.1    PSA 1.632737e+01</span></span>
-<span id="cb4-18"><a href="#cb4-18" tabindex="-1"></a><span class="co">#&gt;  3:   D100   0.2    PSA 3.143589e+01</span></span>
-<span id="cb4-19"><a href="#cb4-19" tabindex="-1"></a><span class="co">#&gt;  4:   D100   0.0    PSV 6.424870e-01</span></span>
-<span id="cb4-20"><a href="#cb4-20" tabindex="-1"></a><span class="co">#&gt;  5:   D100   0.1    PSV 1.139222e-02</span></span>
-<span id="cb4-21"><a href="#cb4-21" tabindex="-1"></a><span class="co">#&gt;  6:   D100   0.2    PSV 4.342486e-02</span></span>
-<span id="cb4-22"><a href="#cb4-22" tabindex="-1"></a><span class="co">#&gt;  7:   D100   0.0     SD 3.509437e-02</span></span>
-<span id="cb4-23"><a href="#cb4-23" tabindex="-1"></a><span class="co">#&gt;  8:   D100   0.1     SD 9.787487e-06</span></span>
-<span id="cb4-24"><a href="#cb4-24" tabindex="-1"></a><span class="co">#&gt;  9:   D100   0.2     SD 7.093803e-05</span></span>
-<span id="cb4-25"><a href="#cb4-25" tabindex="-1"></a><span class="co">#&gt; 10:    D50   0.0    PSA 1.126617e+01</span></span>
-<span id="cb4-26"><a href="#cb4-26" tabindex="-1"></a><span class="co">#&gt; 11:    D50   0.1    PSA 1.412505e+01</span></span>
-<span id="cb4-27"><a href="#cb4-27" tabindex="-1"></a><span class="co">#&gt; 12:    D50   0.2    PSA 2.759419e+01</span></span>
-<span id="cb4-28"><a href="#cb4-28" tabindex="-1"></a><span class="co">#&gt; 13:    D50   0.0    PSV 5.949836e-01</span></span>
-<span id="cb4-29"><a href="#cb4-29" tabindex="-1"></a><span class="co">#&gt; 14:    D50   0.1    PSV 1.060566e-02</span></span>
-<span id="cb4-30"><a href="#cb4-30" tabindex="-1"></a><span class="co">#&gt; 15:    D50   0.2    PSV 3.957369e-02</span></span>
-<span id="cb4-31"><a href="#cb4-31" tabindex="-1"></a><span class="co">#&gt; 16:    D50   0.0     SD 3.133454e-02</span></span>
-<span id="cb4-32"><a href="#cb4-32" tabindex="-1"></a><span class="co">#&gt; 17:    D50   0.1     SD 8.812128e-06</span></span>
-<span id="cb4-33"><a href="#cb4-33" tabindex="-1"></a><span class="co">#&gt; 18:    D50   0.2     SD 5.617509e-05</span></span></code></pre></div>
+<span id="cb4-14"><a href="#cb4-14" tabindex="-1"></a><span class="co">#&gt;       OCID    Tn     ID           S</span></span>
+<span id="cb4-15"><a href="#cb4-15" tabindex="-1"></a><span class="co">#&gt;     &lt;char&gt; &lt;num&gt; &lt;char&gt;       &lt;num&gt;</span></span>
+<span id="cb4-16"><a href="#cb4-16" tabindex="-1"></a><span class="co">#&gt;  1:   D100   0.0    PSA 12.15984138</span></span>
+<span id="cb4-17"><a href="#cb4-17" tabindex="-1"></a><span class="co">#&gt;  2:   D100   0.1    PSA 16.32736580</span></span>
+<span id="cb4-18"><a href="#cb4-18" tabindex="-1"></a><span class="co">#&gt;  3:   D100   0.2    PSA 31.43589259</span></span>
+<span id="cb4-19"><a href="#cb4-19" tabindex="-1"></a><span class="co">#&gt;  4:   D100   0.0    PSV  0.64248700</span></span>
+<span id="cb4-20"><a href="#cb4-20" tabindex="-1"></a><span class="co">#&gt;  5:   D100   0.1    PSV  0.71579447</span></span>
+<span id="cb4-21"><a href="#cb4-21" tabindex="-1"></a><span class="co">#&gt;  6:   D100   0.2    PSV  1.36423235</span></span>
+<span id="cb4-22"><a href="#cb4-22" tabindex="-1"></a><span class="co">#&gt;  7:   D100   0.0     SD  0.03509437</span></span>
+<span id="cb4-23"><a href="#cb4-23" tabindex="-1"></a><span class="co">#&gt;  8:   D100   0.1     SD  0.03863945</span></span>
+<span id="cb4-24"><a href="#cb4-24" tabindex="-1"></a><span class="co">#&gt;  9:   D100   0.2     SD  0.07001303</span></span>
+<span id="cb4-25"><a href="#cb4-25" tabindex="-1"></a><span class="co">#&gt; 10:    D50   0.0    PSA 11.26617109</span></span>
+<span id="cb4-26"><a href="#cb4-26" tabindex="-1"></a><span class="co">#&gt; 11:    D50   0.1    PSA 14.12505433</span></span>
+<span id="cb4-27"><a href="#cb4-27" tabindex="-1"></a><span class="co">#&gt; 12:    D50   0.2    PSA 27.59419196</span></span>
+<span id="cb4-28"><a href="#cb4-28" tabindex="-1"></a><span class="co">#&gt; 13:    D50   0.0    PSV  0.59498360</span></span>
+<span id="cb4-29"><a href="#cb4-29" tabindex="-1"></a><span class="co">#&gt; 14:    D50   0.1    PSV  0.66637326</span></span>
+<span id="cb4-30"><a href="#cb4-30" tabindex="-1"></a><span class="co">#&gt; 15:    D50   0.2    PSV  1.24324408</span></span>
+<span id="cb4-31"><a href="#cb4-31" tabindex="-1"></a><span class="co">#&gt; 16:    D50   0.0     SD  0.03133454</span></span>
+<span id="cb4-32"><a href="#cb4-32" tabindex="-1"></a><span class="co">#&gt; 17:    D50   0.1     SD  0.03478889</span></span>
+<span id="cb4-33"><a href="#cb4-33" tabindex="-1"></a><span class="co">#&gt; 18:    D50   0.2     SD  0.05544259</span></span></code></pre></div>
 </div>
 <div id="notes-limitations-and-corner-cases" class="section level2">
 <h2>Notes (limitations and corner cases)</h2>
@@ -562,16 +582,6 @@ interpolated to a rationalised <code>dt</code>.</li>
 <li><code>TSL2PS()</code> derives grouping metadata from the
 <code>TSL</code> schema. It does not expose <code>BY</code>,
 <code>COL.s</code>, <code>COL.t</code>, or <code>COL.ID</code>.</li>
-</ul>
-</div>
-<div id="references" class="section level2">
-<h2>References</h2>
-<ul>
-<li>Nigam, N. C., &amp; Jennings, P. C. (1969). Calculation of Response
-Spectra from Strong-Motion Earthquake Records. <em>Bulletin of the
-Seismological Society of America</em>, 59(2), 909–922.</li>
-<li>Chopra, A. K. (2017). <em>Dynamics of Structures: Theory and
-Applications to Earthquake Engineering</em> (5th ed.). Pearson.</li>
 </ul>
 </div>
 

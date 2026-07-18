@@ -2,13 +2,12 @@
 % Please edit documentation in R/writeSelection.R
 \name{writeSelection}
 \alias{writeSelection}
-\title{Write a selection (subset of master) to \verb{selection/<name>.csv} / \code{.json}.}
+\title{Write a selection table to \verb{selection/<name>.csv} / \code{.json}.}
 \usage{
 writeSelection(DT, name, path)
 }
 \arguments{
-\item{DT}{subset of the master \code{data.table}
-(output of \code{buildMaster()} after the user's filters).}
+\item{DT}{record metadata \code{data.table} after user filters.}
 
 \item{name}{identifier for the selection, used as filename stem.}
 

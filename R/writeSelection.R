@@ -1,4 +1,4 @@
-#' Write a selection (subset of master) to `selection/<name>.csv` / `.json`.
+#' Write a selection table to `selection/<name>.csv` / `.json`.
 #'
 #' Deduplicates `(OwnerID, EventID, StationID)` so the CSV
 #' carries one row per station folder (= one record). The JSON sidecar
@@ -9,8 +9,7 @@
 #' `(OwnerID, EventID, StationID)` station folder under whichever
 #' records root the orchestrator was given.
 #'
-#' @param DT           subset of the master `data.table`
-#'                     (output of `buildMaster()` after the user's filters).
+#' @param DT           record metadata `data.table` after user filters.
 #' @param name         identifier for the selection, used as filename stem.
 #' @param path Absolute path to the directory where `<name>.csv` and
 #'   `<name>.json` will be written. Required -- no default.

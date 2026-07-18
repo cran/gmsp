@@ -189,7 +189,7 @@
     }
 
     if (OK && length(CAND) > 0) {
-      DF <- do.call(rbind, lapply(CAND, function(x) as.data.frame(x, optional = TRUE)))
+      DF <- data.table::rbindlist(CAND)
       ord <- order(DF$J, DF$leakage)
       DF <- DF[ord, , drop = FALSE]
       nshow <- min(20L, nrow(DF))

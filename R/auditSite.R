@@ -1,9 +1,9 @@
-#' Audit site / station information in the master table -- sanity v1.
+#' Audit site / station information in a record metadata table.
 #'
 #' Flags rows with the FIRST applicable reason: `StationVs30` NA, below
 #' low cutoff, or above high cutoff. Coord checks live in `auditDistances`.
 #'
-#' @param DT       master `data.table`.
+#' @param DT       record metadata `data.table`.
 #' @param vs30Low  lower physical cutoff for `StationVs30` (m/s).
 #' @param vs30High upper physical cutoff (m/s).
 #' @return `data.table` of flagged rows with column `Reason`.

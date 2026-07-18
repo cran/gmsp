@@ -19,7 +19,7 @@
 #'   `"PGD"` uses `max(abs(DT))`.
 #'
 #' @return `.x` with `s` scaled in place.
-#' @seealso [VT2TS()], [rotateComponents()]
+#' @seealso [VT2TS()], [mapComponents()]
 #' @examples
 #' t <- seq(0, 1, by = 0.01)
 #' tsl <- data.table::rbindlist(list(

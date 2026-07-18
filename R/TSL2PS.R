@@ -4,6 +4,15 @@
 #' [AT2TS()], [VT2TS()], and [DT2TS()]. It derives grouping keys from the
 #' `TSL` schema instead of exposing `BY` or column-name arguments.
 #'
+#' For each source domain `d` in acceleration (`AT`), velocity (`VT`), and
+#' displacement (`DT`), the function solves
+#' `z'' + 2 xi omega z' + omega^2 z = x_d` independently and reports
+#' `omega^2 max(abs(z))`. The resulting `PSA`, `PSV`, and `SD` ordinates retain
+#' the units of `AT`, `VT`, and `DT`, respectively. They are domain-normalized
+#' gmsp spectra, not classical transformations of one acceleration-driven
+#' oscillator state. The internally prepended `Tn = 0` rows are the matching
+#' peak-value anchors PGA, PGV, and PGD.
+#'
 #' @param .x Canonical `TSL` `data.table` with columns `t`, `s`, `ID`, and
 #'   `OCID`, plus optional metadata columns.
 #' @param xi numeric. Damping ratio(s) `0..1`. Scalar input preserves the
@@ -221,7 +230,8 @@ TNPS <- c(
     State[, k] <- StepMatrix %*% State[, k - 1L] + StepInput * s[k]
   }
   SD <- max(abs(State[1L, ]))
-  switch(ID, PSA = SD * Stiffness, PSV = SD * omegan, SD = SD)
+  switch(ID, PSA = SD * Stiffness,
+         PSV = SD * Stiffness, SD = SD * Stiffness)
 }
 
 .tslBuildRotDPSL <- function(DATA, META, xi, Tn, D50, D100, nTheta) {
@@ -322,7 +332,8 @@ TNPS <- c(
       MaxAbs <- pmax(MaxAbs, abs(State[1L, ]))
     }
     OUT[j, ] <- switch(ID, PSA = MaxAbs * Stiffness,
-                       PSV = MaxAbs * omegan, SD = MaxAbs)
+                       PSV = MaxAbs * Stiffness,
+                       SD = MaxAbs * Stiffness)
   }
   OUT
 }

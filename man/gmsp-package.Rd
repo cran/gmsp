@@ -9,11 +9,10 @@
 Tools for processing strong-motion records: STFT-based pipeline for
 consistent acceleration/velocity/displacement time series, IMF
 decomposition (EMD/EEMD/VMD), elastic SDOF response spectra, intensity
-measures (PGA, PGV, AI, CAV, duration metrics), and Newmark sliding-block
-displacement. Also includes parsers for common strong-motion record
-formats (PEER NGA-W2 AT2, CESMD V2/V2c, two-column ASCII) and helpers
-to index parsed records into per-record CSV/JSON pairs and a master
-record catalog.
+measures (PGA, PGV, AI, CAV, duration metrics), and parsers for common
+strong-motion record formats (PEER NGA-W2 AT2, CESMD V2/V2c, two-column
+ASCII) and helpers to index parsed records into per-record CSV/JSON pairs
+and a master record catalog.
 }
 \seealso{
 Useful links:

@@ -2,7 +2,7 @@
 % Please edit documentation in R/selectRecords.R
 \name{selectRecords}
 \alias{selectRecords}
-\title{Select records from the master, keyed at the record level.}
+\title{Select records from a record metadata table.}
 \usage{
 selectRecords(
   M,
@@ -13,7 +13,7 @@ selectRecords(
 )
 }
 \arguments{
-\item{M}{master \code{data.table} (output of \code{\link[=buildMaster]{buildMaster()}}).}
+\item{M}{record metadata \code{data.table}.}
 
 \item{RecordID}{character. Filter by \code{RecordID}. Default \code{NULL}.}
 
@@ -27,10 +27,10 @@ selectRecords(
 \code{data.table(RecordID, OwnerID, EventID, StationID)}.
 }
 \description{
-Filters \code{\link[=buildMaster]{buildMaster()}} output by any combination of \code{RecordID},
-\code{EventID}, \code{StationID}, \code{OwnerID}, then deduplicates to one row per
-record. Output is the canonical selection shape consumed by
-the \code{\link[=readTS]{readTS()}} family (\code{\link[=readAT]{readAT()}} / \code{\link[=readVT]{readVT()}} / \code{\link[=readDT]{readDT()}}) and
+Filters a record metadata table by any combination of \code{RecordID},
+\code{EventID}, \code{StationID}, and \code{OwnerID}, then deduplicates to one row
+per record. Output is the canonical selection shape consumed by the
+\code{\link[=readTS]{readTS()}} family (\code{\link[=readAT]{readAT()}} / \code{\link[=readVT]{readVT()}} / \code{\link[=readDT]{readDT()}}) and
 \code{\link[=writeSelection]{writeSelection()}}.
 }
 \details{

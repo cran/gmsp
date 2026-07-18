@@ -55,8 +55,8 @@ disk take explicit `path`, `path.records`, or `path.index` arguments.
   RawFileTable.<OwnerID>.csv                       provider file inventory
   RawRecordTable.<OwnerID>.csv                     one row per RecordID
   RawIntensityTable.<OwnerID>.csv                  per (RecordID, DIR), 20 IM scalars
-  EventTable.<OwnerID>.csv                         event metadata
-  StationTable.<OwnerID>.csv                       station metadata
+  EventTable.<OwnerID>.csv                         project-owned event metadata
+  StationTable.<OwnerID>.csv                       project-owned station metadata
 
 <selectionDir>/                                    ← you choose this
   <name>.csv                                       writeSelection() output
@@ -109,7 +109,7 @@ extractRecord()     ── scales to canonical mm via .parseUnits + .getSF
 
 `extractRecord()` is the orchestrator; parsers and `mapComponents()` are
 public so they can be reused or audited. Public calls use `parseRecord(.x, path)`
-and `extractRecord(.x, path)`, where `.x` is the one-record master subset
+and `extractRecord(.x, path)`, where `.x` is the one-record metadata subset
 and `path` is the records root.
 
 ## Indexing tables
@@ -127,26 +127,32 @@ to `<indexDir>/`:
   station; emits three rows per record (one per `DIR`), each
   carrying the 20 AT-derivable scalars from `getIntensity()`.
 
-The provider-flatfile + USGS catalog join (`buildEventTable()`) is
-under development and ships in `inst/dev/`; it is not yet part of the
-exported API.
+Provider-flatfile catalog maintenance is owned by the database tree. Those
+helpers are project/database operational code; they are not `gmsp` package
+APIs.
 
-## Master record catalog
+## Project-owned record catalog
 
-`buildMaster()` joins, per owner:
+`gmsp` does not export a master-catalog builder. Event and station metadata
+come from provider flatfiles, external catalogs, and project-specific
+precedence rules, so the join belongs in the downstream project that owns the
+database.
+
+A project-level master table commonly joins, per owner:
 
 * `RawRecordTable.<O>.csv` (record list),
-* `EventTable.<O>.csv` (event scalars, merged via `fcoalesce` with
-  source precedence `*.owner` > `*.USGS` > `*.ISC`),
+* `EventTable.<O>.csv` (event scalars, with project-defined source
+  precedence),
 * `StationTable.<O>.csv` (station scalars including Vs30),
+* `RawIntensityTable.<O>.csv` (per-direction intensity scalars),
 
-and emits a `data.table` keyed at `(RecordID, DIR)`. It adds:
+and emits a `data.table` keyed at `(RecordID, DIR)`. It usually adds:
 
 * `Repi` — epicentral distance (haversine, km),
 * `Rhyp` — hypocentral distance, $\sqrt{\mathrm{Repi}^2
   + \mathrm{EventDepth}^2}$ (km).
 
-After `buildMaster()` you can filter the master and pass the subset
+After the project has built that table, you can filter it and pass the subset
 to `selectRecords()` to produce a
 `(RecordID, OwnerID, EventID, StationID)` selection, which is the
 input contract for the `readTS()` family — `readAT()` /
@@ -159,7 +165,7 @@ input contract for the `readTS()` family — `readAT()` /
 The natural composition for acceleration records is:
 
 ```r
-M   <- buildMaster(path = "<your index path>")
+M <- your_project_master_table
 Selection <- selectRecords(M[EventMagnitude > 7 & Repi < 100 & DIR == "H1"])
 TS  <- readAT(.x = Selection, path = "<your records path>")
 ATS <- TS[, AT2TS(.SD, units.source = "mm", Fmax = 25),
@@ -192,10 +198,9 @@ archive is readable, and only then unlinks the original.
 ## Notes
 
 * The package does **not** download data. Bringing raw provider files
-  to `raw.owner/` is the user's responsibility. Examples under
-  `examples/maintenance/` in the source repository show a pattern for
-  ingestion (USGS catalog matching, staging / promote / rollback,
-  etc.).
+  to `raw.owner/` is the user's responsibility. Ingestion workflows such as
+  catalog matching, staging, promotion, and rollback belong in the
+  project-owned database tree.
 * `RecordID` is a 16-character hex hash (`openssl::md5` of the WIDE
   CSV body, truncated). It is stable across re-extraction of the
   same record.

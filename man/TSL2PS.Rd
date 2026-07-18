@@ -53,6 +53,16 @@ If requested, D50 and D100 appear as ordinary component suffixes such as
 \code{\link[=AT2TS]{AT2TS()}}, \code{\link[=VT2TS]{VT2TS()}}, and \code{\link[=DT2TS]{DT2TS()}}. It derives grouping keys from the
 \code{TSL} schema instead of exposing \code{BY} or column-name arguments.
 }
+\details{
+For each source domain \code{d} in acceleration (\code{AT}), velocity (\code{VT}), and
+displacement (\code{DT}), the function solves
+\verb{z'' + 2 xi omega z' + omega^2 z = x_d} independently and reports
+\verb{omega^2 max(abs(z))}. The resulting \code{PSA}, \code{PSV}, and \code{SD} ordinates retain
+the units of \code{AT}, \code{VT}, and \code{DT}, respectively. They are domain-normalized
+gmsp spectra, not classical transformations of one acceleration-driven
+oscillator state. The internally prepended \code{Tn = 0} rows are the matching
+peak-value anchors PGA, PGV, and PGD.
+}
 \examples{
 t <- seq(0, 1, by = 0.01)
 tsl <- data.table::rbindlist(list(

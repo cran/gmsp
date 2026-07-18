@@ -36,11 +36,12 @@ spectral `ID` values: `AT -> PSA`, `VT -> PSV`, and `DT -> SD`.
 
 The reported spectral IDs are:
 
-* `PSA` — pseudo-spectral acceleration,
-* `PSV` — pseudo-spectral velocity,
-* `SD`  — spectral displacement.
+* `PSA` — domain-normalised acceleration response from `AT`,
+* `PSV` — domain-normalised velocity response from `VT`,
+* `SD`  — domain-normalised displacement response from `DT`.
 
-Classic references: Nigam & Jennings (1969), Chopra (2017).
+These are three independent domain operators. They are not three classical
+pseudo-ordinates derived from one oscillator driven only by acceleration.
 
 ## Input and output
 
@@ -127,19 +128,36 @@ The state is then updated by looping over $k = 2 \ldots N$.
 
 ## How PSA / PSV / SD are built
 
-In the single-signal SDOF worker, after simulation the code takes the
-absolute maximum of displacement (first state):
+Let $d \in \{A,V,D\}$ identify the acceleration, velocity, or displacement
+domain and let $x_d(t)$ be the matching `AT`, `VT`, or `DT` input. The worker
+solves an independent state equation in each domain,
 
-$$SD = \max_t |y_1(t)|.$$
+$$
+\ddot z_d + 2\xi\omega_n\dot z_d + \omega_n^2 z_d = x_d(t),
+$$
 
-It then reports
+whose transfer function is
 
-$$PSV = \omega_n\,SD, \qquad PSA = \omega_n^2\,SD.$$
+$$
+H_d(p) = \frac{1}{p^2 + 2\xi\omega_n p + \omega_n^2}.
+$$
 
-For canonical `TSL` input, `TSL2PS()` runs the worker on the matching
-source series and keeps the matching spectral ID: `PSA` from `AT`,
-`PSV` from `VT`, and `SD` from `DT`. The function prepends $T_n = 0$
-with the corresponding peak value (`PGA`, `PGV`, or `PGD`).
+gmsp uses the domain-normalised operator
+
+$$
+G_d(p) = \omega_n^2 H_d(p), \qquad
+S_d(T_n) = \omega_n^2 \max_t |z_d(t)|.
+$$
+
+The multiplier is therefore $\omega_n^2$ in all three branches. If $x_d$ has
+units $U_d$, the first state has units $U_d\,\mathrm{s}^2$ and $S_d$ retains
+$U_d$. Consequently PSA has acceleration units, PSV has velocity units, and SD
+has displacement units. Because $z_A$, $z_V$, and $z_D$ are responses to
+different source histories, identities such as
+$PSV = \omega_n SD$ do not apply across these columns.
+
+The function prepends $T_n = 0$ with the corresponding unfiltered peak input
+value: PGA from `AT`, PGV from `VT`, and PGD from `DT`.
 
 ## D50 and D100 horizontal spectra
 
@@ -159,6 +177,8 @@ D50 and D100 follow the same spectral-ID contract as the component spectra:
 
 D100 is computed independently for each period and spectral ID. The angle that
 maximizes `PSA` can differ from the angle that maximizes `PSV` or `SD`.
+The $\omega_n^2$ domain normalisation is applied to every rotated response
+before the D50 quantile or D100 maximum is evaluated.
 
 ```{r d50-example, eval = TRUE}
 t_d50 <- seq(0, 1, by = 0.01)
@@ -186,11 +206,3 @@ rot_psl[OCID %chin% c("D50", "D100")]
   interpolated to a rationalised `dt`.
 * `TSL2PS()` derives grouping metadata from the `TSL` schema. It does
   not expose `BY`, `COL.s`, `COL.t`, or `COL.ID`.
-
-## References
-
-* Nigam, N. C., & Jennings, P. C. (1969). Calculation of Response
-  Spectra from Strong-Motion Earthquake Records. *Bulletin of the
-  Seismological Society of America*, 59(2), 909–922.
-* Chopra, A. K. (2017). *Dynamics of Structures: Theory and
-  Applications to Earthquake Engineering* (5th ed.). Pearson.

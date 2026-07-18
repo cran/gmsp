@@ -1,0 +1,15 @@
+{
+  "path": {
+    "source": "gmsp/stage/F25.trim"
+  },
+  "recordID": null,
+  "maxRecords": null,
+  "maxF25Rows": null,
+  "IMF": {
+    "method": "vmd",
+    "k": 10
+  },
+  "parallel": true,
+  "override": false,
+  "logEvery": 30
+}

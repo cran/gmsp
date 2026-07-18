@@ -31,15 +31,20 @@
 #' @param NW integer. Nominal STFT window length (samples); may be adjusted by the
 #'   strategy. Default: `128`.
 #' @param OVLP numeric. Window overlap percent. Default: `75`.
-#' @param flatZeros logical. Apply edge tapering to suppress low-level pre/post
-#'   segments. If `isRaw = TRUE`, a taper is applied regardless. Default: `FALSE`.
-#' @param Astop0 numeric. Normalized stop threshold `0..1` for taper/flatten; relative to per-channel max amplitude. Default: `1e-4`.
+#' @param flatZeros logical. If `TRUE`, flatten external low-amplitude tails to
+#'   exact zeros using per-channel normalized acceleration amplitude before
+#'   optional trimming. If `isRaw = TRUE`, the historical smooth taper is still
+#'   applied even when `flatZeros = FALSE`. Default: `FALSE`.
+#' @param Astop0 numeric. Normalized stop threshold `0..1` for taper/flatten;
+#'   relative to per-channel max amplitude. `Astop0 = 1e-3` is equivalent to
+#'   threshold `10` after normalizing PGA to `10000`. Default: `1e-3`.
 #' @param Apass0 numeric. Normalized pass threshold `0..1` for taper/flatten; relative to per-channel max amplitude. Default: `1e-3`.
 #' @param AstopLP numeric. Stopband attenuation for anti-alias LP (resampling).
 #'   Default: `1e-3`.
 #' @param ApassLP numeric. Passband for anti-alias LP (resampling). Default: `0.98`.
-#' @param trimZeros logical. If `TRUE`, trims leading/trailing zeros according to the
-#'   final taper window. Default: `FALSE`.
+#' @param trimZeros logical. If `TRUE`, trims rows outside the final nonzero
+#'   window support after taper/flatten. Multi-component records use the union
+#'   of component supports. Default: `FALSE`.
 #' @param detrend logical. Remove mean before/after each main stage. Default: `FALSE`.
 #' @param regularize logical. Force time regularization of input if needed.
 #'   Default: `FALSE`.
@@ -65,9 +70,8 @@
 #'     `DT.<OCID>`.
 #'   - `"TSL"` (default): long table with columns `t`, `s`, `ID`
 #'     (one of `"AT"`, `"VT"`, `"DT"`), and `OCID`.
-#'   Sampling-related scalars (`Fs`, `dt`, `df`, `NP`, ...) are computed
-#'   internally during processing but are not part of the return value;
-#'   recover them from the output via `1 / diff(ts)[1]` and `nrow(.)`.
+#'   Sampling interval and row count are not returned separately; recover
+#'   them from the output via `1 / diff(ts)[1]` and `nrow(.)`.
 #'
 #' @examples
 #' t <- seq(0, 2, by = 0.02)
@@ -94,7 +98,7 @@ AT2TS <- function(
   NW = 128,
   OVLP = 75,
   flatZeros = FALSE,
-  Astop0 = 1e-4,
+  Astop0 = 1e-3,
   Apass0 = 1e-3,
   AstopLP = 1e-3,
   ApassLP = 0.98,
@@ -209,12 +213,11 @@ AT2TS <- function(
 
   ## STFT Strategy and Resample ----
   # Get optimal STFT parameters
-  HasKNyq <- "kNyq" %in% names(as.list(match.call()))
-  if (HasKNyq) {
-    STFTParams <- .setSTFT(NP = NP, Fs = Fs, Fmax = Fmax, kNyq = kNyq,
+  if (missing(kNyq)) {
+    STFTParams <- .setSTFT(NP = NP, Fs = Fs, Fmax = Fmax,
       NW.min = NW, MW.min = 16, OVLP = OVLP)
   } else {
-    STFTParams <- .setSTFT(NP = NP, Fs = Fs, Fmax = Fmax,
+    STFTParams <- .setSTFT(NP = NP, Fs = Fs, Fmax = Fmax, kNyq = kNyq,
       NW.min = NW, MW.min = 16, OVLP = OVLP)
   }
 
@@ -225,18 +228,17 @@ AT2TS <- function(
 
   # Audit STFT and parameters (pre-resample)
   if (audit) {
-    # pick first column as representative
-    AuditSignal <- as.numeric(X[[1]])
-    DT_audit <- data.table(t = t, s = AuditSignal)
-    HasKNyq <- "kNyq" %in% names(as.list(match.call()))
     aud <- try(
-      if (HasKNyq) {
-        auditSTFT(DT_audit, Fmax = Fmax, kNyq = kNyq, NW.min = NW, MW.min = 16, OVLP = OVLP,
-          ApassLP = ApassLP, AstopLP = AstopLP)
+      if (missing(kNyq)) {
+        auditSTFT(data.table(t = t, s = as.numeric(X[[1]])), Fmax = Fmax,
+          NW.min = NW, MW.min = 16, OVLP = OVLP, ApassLP = ApassLP,
+          AstopLP = AstopLP)
       } else {
-        auditSTFT(DT_audit, Fmax = Fmax, NW.min = NW, MW.min = 16, OVLP = OVLP,
+        auditSTFT(data.table(t = t, s = as.numeric(X[[1]])), Fmax = Fmax,
+          kNyq = kNyq, NW.min = NW, MW.min = 16, OVLP = OVLP,
           ApassLP = ApassLP, AstopLP = AstopLP)
-      }, silent = TRUE)
+      },
+      silent = TRUE)
     if (!inherits(aud, "try-error") && length(aud$warnings)) {
       warning(paste(aud$warnings, collapse = "\n"))
       if (verbose) {
@@ -261,12 +263,12 @@ AT2TS <- function(
   ## Case #2. Acceleration Time Histories ----
   # Generate initial taper window
   if (isRaw || flatZeros) {
-    # When `flatZeros` (or `isRaw`) is on, the edge window is a
-    # `.taperA` amplitude-threshold mask using `(Astop0, Apass0)`. A
-    # separate FlattenZeros helper was planned earlier but never
-    # implemented; the taper is the active edge stage.
+    # `isRaw` keeps the historical smooth taper. `flatZeros` adds an exact
+    # support mask based on amplitude normalized by each component peak.
     Wo <- X[, .(sapply(.SD, function(ts) {
-      .taperA(ts, Astop = Astop0, Apass = Apass0)
+      w <- .taperA(ts, Astop = Astop0, Apass = Apass0)
+      if (flatZeros) w <- w * .flattenA(ts, Astop = Astop0)
+      w
     }))]
   } else {
     Wo <- X[, .(sapply(.SD, function(ts) {
@@ -345,11 +347,12 @@ AT2TS <- function(
   ## Final Taper Zeros ----
   # Generate final taper window based on AT
   if (isRaw || flatZeros) {
-    # Final-stage edge mask: same `.taperA` shape applied to the AT
-    # output after integration. `FlattenZeros` was a planned helper
-    # that never landed; the taper is the active implementation.
+    # Final-stage edge mask: keep raw taper behavior, and when requested
+    # flatten the normalized-amplitude tails to exact zeros before trimming.
     Wo <- AT[, .(sapply(.SD, function(ts) {
-      .taperA(ts, Astop = Astop0, Apass = Apass0)
+      w <- .taperA(ts, Astop = Astop0, Apass = Apass0)
+      if (flatZeros) w <- w * .flattenA(ts, Astop = Astop0)
+      w
     }))]
   } else {
     Wo <- AT[, .(sapply(.SD, function(ts) {
@@ -375,7 +378,7 @@ AT2TS <- function(
   # Trim Zeros
   if (trimZeros) {
     idx <- apply(Wo != 0, MARGIN = 1, function(x) {
-      all(x)
+      any(x)
     })
     AT <- AT[idx]
     VT <- VT[idx]
@@ -397,32 +400,20 @@ AT2TS <- function(
     return(DT)
   }
 
-  ## Summary ----
-  NP <- nrow(AT)
-  ts <- seq(0, dt * (NP - 1), dt)
-  Fs <- 1 / dt
-  df <- Fs / NW
-  fs <- seq(from = 0, by = df, length.out = NW / 2)
-
   ## Pack Time Series  ----
+  ts <- seq(0, dt * (nrow(AT) - 1), dt)
   TSW <- data.table(ts = ts, AT = AT, VT = VT, DT = DT)
   if (identical(output, "TSW")) {
     return(TSW)
   }
 
-  id.vars <- c("ts")
-  measure.vars <- colnames(TSW[, -c("ts")])
-  AUX <- data.table::melt(TSW, id.vars = id.vars, measure.vars = measure.vars)
-  BAD <- !is.finite(AUX[["value"]])
-  if (any(BAD)) {
-    COUNT <- AUX[BAD, .N, by = "variable"]
-    MSG <- paste(
-      sprintf("%s=%d", COUNT[["variable"]], COUNT[["N"]]),
-      collapse = ", "
-    )
+  AUX <- data.table::melt(TSW, id.vars = "ts",
+                          measure.vars = setdiff(names(TSW), "ts"))
+  if (nrow(AUX[!is.finite(value)])) {
     stop(sprintf(
       "AT2TS TSL output requires finite samples; non-finite values by variable: %s.",
-      MSG
+      AUX[!is.finite(value), .N, by = variable][
+        , paste(sprintf("%s=%d", variable, N), collapse = ", ")]
     ), call. = FALSE)
   }
   TSL <- AUX[, .(t = ts, s = value, ID = gsub("\\..*$", "", variable), OCID = gsub("^[^.]*\\.", "", variable))]

@@ -1,0 +1,19 @@
+{
+  "path": {
+    "source": "gmsp/stage/F25",
+    "target": "gmsp/stage/F25.trim"
+  },
+  "ID": "AI",
+  "DIR": [
+    "H1",
+    "H2",
+    "UP"
+  ],
+  "range": [
+    0.01,
+    0.99
+  ],
+  "parallel": true,
+  "override": false,
+  "logEvery": 30
+}
