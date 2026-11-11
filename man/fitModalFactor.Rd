@@ -2,81 +2,134 @@
 % Please edit documentation in R/fitModalFactor.R
 \name{fitModalFactor}
 \alias{fitModalFactor}
-\title{Fit the modal shaping factors of one record}
+\title{Fit modal factors against a response-spectrum band}
 \usage{
 fitModalFactor(
-  .x,
+  IMF,
   target,
   source,
   key,
-  ocid = "H1",
-  xi = 0.05,
-  fmax = 25,
-  kNyq = 4,
+  OCID,
+  xi,
+  fmax,
+  kNyq,
+  signalControl,
   factorMin,
-  factorMax = Inf,
-  remove = NULL,
-  includeResidue = TRUE,
-  unitsSource = "mm",
-  unitsTarget = "mm"
+  factorMax,
+  criterion,
+  unitsSource,
+  unitsTarget,
+  includeResidue = TRUE
 )
 }
 \arguments{
-\item{.x}{data.table. IMF rows for the suite (or the record):
-\code{RecordID}, \code{OwnerID}, \code{EventID}, \code{StationID}, \code{OCID}, \code{t},
-\code{signal}, \verb{IMF*} mode columns, and optionally \code{residue}. Rows are
-filtered to \code{key}'s record and \code{ocid}.}
+\item{IMF}{Table for one record with OCID, t, signal, optional \code{IMF<k>}
+mode columns and optional residue. Time is in seconds and amplitudes
+use unitsSource. A mode entirely NA within a component is absent;
+partial NA or non-finite samples are errors.}
 
-\item{target}{data.table. Target band with columns \code{Tn}, \code{Sa.low},
-\code{Sa.mean}, \code{Sa.high}; must include \code{Tn == 0} (PGA) and positive
-periods, in the PSA units of \code{.x}.}
+\item{target}{Table with unique nonnegative Tn in seconds and finite
+positive Sa.low, Sa.mean and Sa.high, in that order at each period.
+The band includes Tn = 0 and positive periods; amplitudes use
+unitsTarget/s^2.}
 
-\item{source}{data.table. Source TSW rows for the suite (columns
-\code{RecordID}, \code{t}, \verb{AT.<ocid>}, ...) used for the source spectra.}
+\item{source}{Wide time-series table for the same record, with its key
+columns, t and \code{AT.<OCID>}, \code{VT.<OCID>}, \code{DT.<OCID>}, in unitsSource.}
 
-\item{key}{data.table. One row carrying \code{RecordID}, \code{OwnerID},
-\code{EventID}, \code{StationID} of the record to fit.}
+\item{key}{One-row table with RecordID, OwnerID, EventID and StationID,
+plus ProcessID when present in the context. Missing IMF key columns
+are filled from this row; conflicting values are errors.}
 
-\item{ocid}{character. Component to shape (\code{"H1"}, \code{"H2"}, \code{"UP"}).}
+\item{OCID}{Component to fit: "H1", "H2" or "UP".}
 
-\item{xi}{numeric. Damping ratio.}
+\item{xi}{Positive finite damping ratio accepted by computeSpectraTSL.}
 
-\item{fmax}{numeric. Analysis bandwidth (Hz).}
+\item{fmax}{Positive finite frequency of interest in Hz.}
 
-\item{kNyq}{numeric. Nyquist multiple.}
+\item{kNyq}{Positive finite sampling-frequency multiplier.}
 
-\item{factorMin}{numeric. Lower bound of the modal factors
-(\code{shape.modalFactor.min}), in (0, 1].}
+\item{signalControl}{Named list with windowLength, overlap,
+astop0, apass0, astopLP and
+apassLP, as in buildTSL. Optional flatZeros, trimZeros,
+removeMean, forceRegularization and includeWarnings retain their
+buildTSL defaults; duplicate or other fields are errors.}
 
-\item{factorMax}{numeric. Upper bound of the modal factors
-(\code{shape.modalFactor.max}); must contain 1. Default \code{Inf}.}
+\item{factorMin}{Finite lower modal-factor bound in (0,1].}
 
-\item{remove}{character or integer. IMF modes excluded from the
-reconstruction (\code{imf.remove}).}
+\item{factorMax}{Upper modal-factor bound at least one; Inf is admitted.}
 
-\item{includeResidue}{logical. Keep the residue in the
-reconstruction.}
+\item{criterion}{Explicit xemd selection list: rule "band" with fMin
+and fMax in Hz, or rule "energyFraction" with minimum, and action
+"keep" or "remove". Band limits are finite with 0 <= fMin <= fMax;
+minimum is finite and nonnegative. At least one mode must remain; selection by
+mode name or index is not admitted.}
 
-\item{unitsSource}{character. Units of \code{.x} signals.}
+\item{unitsSource, unitsTarget}{Source and destination length bases:
+"mm", "cm" or "m", matched case-insensitively. Source histories and
+IMF amplitudes are converted to the destination basis.}
 
-\item{unitsTarget}{character. Units of the shaped products.}
+\item{includeResidue}{Logical scalar, TRUE by default, retaining the
+residue when present with a fixed coefficient of one, outside the modal
+optimization and its factor bounds. Final energy restoration applies to
+the complete reconstruction, including the residue.}
 }
 \value{
-list with \code{TSW} (shaped time histories of the fitted
-component), \code{PSW} (shaped spectra), \code{PSA} (long table with
-\code{kind = source/start/final} curves), \code{coeff} (per-mode factors:
-\code{b}, \code{energyFactor}, \code{stageFactor}), \code{metrics} (one-row fit
-diagnostics), and \code{eval} (objective evaluations).
+A list with TSW and PSW for the fitted component; PSA with
+RecordID, kind (source/start/final), Tn and Sa; coeff with the record
+keys, IMF, b0, b, ratio, energyFactor and stageFactor; metrics with
+optimizer status and fit diagnostics; and eval in objective-call order.
+Time histories and spectra are ordered by record and time or period;
+coefficients follow the retained modal order, then the residue. Its row has
+b0, b and ratio equal to one, and stageFactor equal to energyFactor.
 }
 \description{
-Per-record modal shaping of the spectral-match workflow: released
-modal amplitudes are fitted against a target response-spectrum band
-(\code{shape.modalFactor} in the batch JSON contract), with energy
-restoration applied after the modal objective.
+Fits the retained modes of one component of one record, then restores
+signal energy in the final reconstruction.
+}
+\details{
+Modes are measured and selected through xemd. The objective
+uses relative spectral RMSE, squared relative band violations and a
+0.01 weight on mean squared log-factor movement. L-BFGS-B starts with
+factors equal to one and maxit = 1. Energy restoration applies after
+optimization.
+
+In metrics, status is done and convergence and message retain the
+stats::optim result: convergence 0 is successful completion, 1 means
+that the iteration limit maxit was reached, and 51 and 52 are a warning
+and an error of L-BFGS-B explained by message. message is the optimizer
+text, such as NEW_X, or NA when the optimizer returns none. With
+maxit = 1, code 1 is the expected result and does not indicate a
+failure. The convergence code does not change status.
+
+Invalid keys, controls, samples or target bands cause an error with
+record context. Zero reconstruction energy is an error. Dependency
+conditions retain their classes. Inputs are preserved; the operation
+reads or writes no files and uses no random numbers.
 }
 \examples{
-\dontrun{
-Fit <- fitModalFactor(.x = IMF, target = Band, source = TSW,
-                      key = Selection[1L], factorMin = 0.001)
+Key <- data.table::data.table(RecordID = "R1", OwnerID = "A", EventID = "E1",
+                              StationID = "S1")
+Time <- seq(0, 4, by = 0.01)
+Mode <- 1000 * sin(2 * pi * Time)
+Residue <- 100 * sin(pi * Time)
+IMF <- data.table::data.table(OCID = "H1", t = Time, signal = Mode + Residue,
+                              IMF1 = Mode, residue = Residue)
+Source <- data.table::data.table(Key, t = Time, AT.H1 = Mode + Residue,
+                                 VT.H1 = 0, DT.H1 = 0)
+Target <- data.table::data.table(Tn = c(0, 1, 2), Sa.low = 1000,
+                                 Sa.mean = 2000, Sa.high = 3000)
+Control <- list(windowLength = 128, overlap = 75, astop0 = 0.001, apass0 = 0.001,
+                astopLP = 0.001, apassLP = 0.98, includeWarnings = FALSE)
+Fit <- fitModalFactor(IMF, target = Target, source = Source, key = Key,
+  OCID = "H1", xi = 0.05, fmax = 25, kNyq = 4, signalControl = Control,
+  factorMin = 0.001, factorMax = Inf,
+  criterion = list(rule = "energyFraction", minimum = 0, action = "keep"),
+  unitsSource = "mm", unitsTarget = "mm")
+print(Fit$coeff[, c("IMF", "b", "energyFactor", "stageFactor")])
+print(Fit$PSA[Fit$PSA$kind == "final"])
+print(Fit$metrics[, c("status", "convergence", "RMSE.start", "RMSE.final")])
 }
+\seealso{
+\code{\link[=fitRecordFactor]{fitRecordFactor()}}, \code{\link[=assessCompatibility]{assessCompatibility()}}, \code{\link[=buildTSL]{buildTSL()}},
+\code{\link[xemd:selectModesTSL]{xemd::selectModesTSL()}}
 }

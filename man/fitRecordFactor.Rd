@@ -2,55 +2,75 @@
 % Please edit documentation in R/fitRecordFactor.R
 \name{fitRecordFactor}
 \alias{fitRecordFactor}
-\title{Fit the suite record-scaling factors}
+\title{Fit suite record-scaling factors}
 \usage{
 fitRecordFactor(
-  .x,
+  PSA,
   target,
   records,
-  factorMin = 0,
-  factorMax = Inf,
-  bandWeight = 2,
-  deficitWeight = 1
+  factorMin,
+  factorMax,
+  bandWeight,
+  deficitWeight
 )
 }
 \arguments{
-\item{.x}{data.table. Suite PSA long table with columns \code{RecordID},
-\code{Tn}, \code{Sa}, \code{kind}; the \code{kind == "final"} curves are scaled.}
+\item{PSA}{A data.table with character \code{RecordID} and \code{kind},
+numeric \code{Tn} in seconds and numeric \code{Sa} in acceleration units.
+The \code{kind == "final"} curves enter the fit.}
 
-\item{target}{data.table. Target band with columns \code{Tn}, \code{Sa.low},
-\code{Sa.mean}, \code{Sa.high}, in the same units as \code{.x}.}
+\item{target}{A table with \code{Tn}, \code{Sa.low}, \code{Sa.mean} and
+\code{Sa.high}, in the same acceleration units as \code{PSA}.
+Periods are finite, non-negative and unique; ordinates are finite,
+positive and ordered from low through mean to high.}
 
-\item{records}{character. RecordIDs of the completed records to
-scale (at least two).}
+\item{records}{Character vector of distinct completed record identities,
+in the requested output order.}
 
-\item{factorMin}{numeric. Lower bound of the record factors
-(\code{shape.recordFactor.min}). Default \code{0}.}
+\item{factorMin}{Finite non-negative lower factor bound.}
 
-\item{factorMax}{numeric. Upper bound of the record factors
-(\code{shape.recordFactor.max}). Default \code{Inf}.}
+\item{factorMax}{Upper factor bound, at least \code{factorMin};
+\code{Inf} permits an unbounded upper factor.}
 
-\item{bandWeight}{numeric. Weight of the band-violation term.
-Default \code{2}.}
+\item{bandWeight}{Finite non-negative weight of the record band-violation term.}
 
-\item{deficitWeight}{numeric. Extra weight of the suite-mean deficit
-below the target. Default \code{1}.}
+\item{deficitWeight}{Finite positive weight of the suite-mean deficit term.}
 }
 \value{
-list with \code{scale} (data.table \code{RecordID}, \code{scaleFactor}) and
-\code{stage} (one-row solver diagnostics; the \code{stage} column keeps the
-frozen product label \code{"B"}).
+A list with \code{scale} and \code{stage} data.tables.
+\code{scale} contains \code{RecordID} and \code{scaleFactor} in the
+requested record order after alignment.
+\code{stage} contains one row labelled \code{B}, the \code{osqp} method
+and solver status, objective weights, relative RMSE, PGA ratio, band
+violation and scale statistics, and matrix diagnostics
+\code{equations}, \code{records}, \code{rankSVD}, \code{cond2} and \code{rcond}.
 }
 \description{
-Suite-level record scaling of the spectral-match workflow: one scale
-coefficient per record (\code{shape.recordFactor} in the batch JSON
-contract), solved as a bounded quadratic program against the target
-band (global band-conditioned objective).
+Fits one bounded scale factor per record with a quadratic program against
+a target response-spectrum band, without modifying the input tables.
+}
+\details{
+Duplicate \code{RecordID/Tn/kind} keys are errors.
+Alignment retains target periods present in the final curves and requires
+at least two records with a finite spectral matrix.
+The solver uses absolute and relative tolerances of \code{1e-8},
+a maximum of \code{200000} iterations and polishing; the returned status is
+\code{solved} or \code{solved inaccurate}, and other statuses are errors.
+The stage RMSE is relative to \code{Sa.mean}; PGA ratio is \code{NA}
+when the aligned periods lack zero, and \code{rcond} is \code{NA}
+when its matrix calculation fails.
+The function calculates in memory and performs no file access.
 }
 \examples{
-\dontrun{
-Suite <- fitRecordFactor(.x = PSA, target = Band,
-                         records = Metrics[status == "done", RecordID],
-                         factorMin = 0.5, factorMax = 1.6)
+Target <- data.table::data.table(Tn = c(0, 1), Sa.low = 0.50 * 9806.65,
+  Sa.mean = 0.84 * 9806.65, Sa.high = 0.95 * 9806.65)
+PSA <- data.table::data.table(RecordID = rep(c("R1", "R2"), each = 2),
+  kind = "final", Tn = c(0, 1, 0, 1), Sa = c(7000, 8500, 4000, 6000))
+Fit <- fitRecordFactor(PSA, target = Target, records = c("R1", "R2"),
+  factorMin = 0.5, factorMax = 1.6, bandWeight = 2, deficitWeight = 1)
+print(Fit$scale)
+print(Fit$stage[, c("status", "RMSE", "pgaRatio", "insideFraction", "nAtMax")])
 }
+\seealso{
+\code{\link[=fitModalFactor]{fitModalFactor()}}, \code{\link[=assessCompatibility]{assessCompatibility()}}
 }

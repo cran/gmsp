@@ -1,0 +1,191 @@
+---
+title: "Introduction"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+`gmsp` processes ground-motion time histories, computes response spectra and
+intensity measures, selects and matches records, and composes modal
+decomposition and reconstruction through `xemd`.
+
+## Installation
+
+The package is installed from CRAN:
+
+```{r install, eval = FALSE}
+install.packages("gmsp")
+```
+
+## Time-history tables
+
+Time-history tables use `OCID`, `ID`, `t` and `s` for component, quantity,
+time in seconds and sample value. The `by` argument names the metadata
+columns that identify a record; `character()` declares one record without
+metadata. The synthetic record below has two horizontal acceleration
+components, `H1` and `H2`, sampled every 0.01 s and identified by
+`RecordID`.
+
+```{r record, message = FALSE}
+library(gmsp)
+library(data.table)
+
+Time <- seq(0, 20, by = 0.01)
+Envelope <- sin(pi * Time / max(Time))^2
+TSL <- rbindlist(list(
+  data.table(RecordID = "R1", OCID = "H1", ID = "AT", t = Time,
+             s = 1200 * Envelope * sin(2 * pi * 1.5 * Time)),
+  data.table(RecordID = "R1", OCID = "H2", ID = "AT", t = Time,
+             s = 900 * Envelope * sin(2 * pi * 2.5 * Time + 0.4))
+))
+head(TSL, 3)
+```
+
+## Acceleration, velocity and displacement
+
+`buildTSL()` processes one measured quantity into acceleration (`AT`),
+velocity (`VT`) and displacement (`DT`) on a common time grid per record.
+The frequency of interest `fmax`, the STFT window length and overlap, the
+edge-taper thresholds `astop0` and `apass0` and the low-pass magnitudes
+`astopLP` and `apassLP` are required arguments. The control values in this
+guide illustrate the calls. Raw input is converted from `unitsSource`,
+regularized and tapered, and the amplitudes are returned in
+`unitsTarget`/s^2, `unitsTarget`/s and `unitsTarget`.
+
+```{r histories}
+Histories <- buildTSL(
+  TSL, by = "RecordID", unitsSource = "mm", unitsTarget = "mm", fmax = 5,
+  windowLength = 128, overlap = 75,
+  astop0 = 1e-3, apass0 = 1e-3,
+  astopLP = 1e-3, apassLP = 0.98,
+  includeWarnings = FALSE
+)
+Histories[, .(samples = .N, start = min(t), peak = max(abs(s))), by = .(OCID, ID)]
+```
+
+With `kNyq = NULL`, the default, `buildTSL()` selects the sampling
+frequency; the processed grid of this record has a step of
+`r Histories[OCID == "H1" & ID == "AT", t[2] - t[1]]` s. Tapering,
+resampling and the removal of means affect the processed histories, and the
+returned quantities are not exact algebraic inverses of the input.
+
+## Response spectra
+
+`computeSpectraTSL()` computes PSA, PSV and SD from `AT`, `VT` and `DT` as
+separate excitations. Each ordinate retains the units of its source domain,
+and the zero period carries the peak absolute value of the regularized
+source signal. `includeD50` adds `D50`, the median over `nTheta` angles in
+[0, pi) of the rotated horizontal component, which requires `H1` and `H2`.
+
+```{r spectra}
+PSL <- computeSpectraTSL(Histories, by = "RecordID", xi = 0.05,
+                         Tn = c(0.1, 0.2, 0.5, 1, 2),
+                         includeD50 = TRUE, nTheta = 8)
+PSL[ID == "PSA" & OCID == "D50"]
+```
+
+`widenPSL()` projects the spectra to columns named `<ID>.<OCID>` without
+changing values or units.
+
+```{r wide}
+widenPSL(PSL, by = "RecordID")[, .(Tn, PSA.H1, PSA.H2, PSA.D50)]
+```
+
+## Intensity measures
+
+`measureIntensitiesTSL()` computes scalar intensity measures for each
+record, component and signal domain after conversion to the requested
+length basis; the `units` column identifies the units of each measure.
+
+```{r intensities}
+IML <- measureIntensitiesTSL(Histories, by = "RecordID",
+                             unitsSource = "mm", unitsTarget = "mm")
+IML[IM %in% c("PGA", "AI", "D0595", "CAV", "PGV", "PGD")]
+```
+
+## A selection project
+
+Project functions read their JSON contract relative to `root` and publish
+the products described in their help. `selectProject()` filters index
+metadata and writes the selected records and the candidate pool. Its
+contract requires `owners`, `path.selection` and the index paths;
+`processID` defaults to `raw` and `oneRecordPerEvent` to TRUE, and PGA
+criteria require `units.PGA`. The project below is written under
+`tempdir()`: a processed index of four records from two owners, and a
+contract with one criterion on magnitude and PGA.
+
+```{r project}
+Root <- file.path(tempdir(), "gmsp-introduction")
+dir.create(file.path(Root, "database", "index"), recursive = TRUE)
+dir.create(file.path(Root, "database", "process", "demo"), recursive = TRUE)
+Index <- data.table(
+  RecordID = c("101", "102", "103", "104"), OwnerID = c("A", "B", "A", "B"),
+  EventID = c("2019a", "2019b", "2021a", "2022a"),
+  EventID.USGS = c("us01", "us01", "us02", "us03"),
+  StationID = c("S1", "S2", "S3", "S4"), DIR = "H1", OCID = "H1",
+  PGA = c(2000, 3500, 1500, 900), ProcessID = "demo",
+  EventMagnitude = c(6.8, 6.9, 7.1, 5.6),
+  EventMagnitudeType = c("Mw", "mww", "ML", "Mw")
+)
+fwrite(Index, file.path(Root, "database", "process", "demo", "MasterIndex.csv"))
+jsonlite::write_json(list(
+  processID = "demo", owners = c("A", "B"),
+  units = list(PGA = "g"),
+  criteria = list(list(criterion = "strong",
+                       EventMagnitude = c(6, 8), PGA = c(0.1, 0.5))),
+  path = list(index = "database/index", selection = "selection")
+), file.path(Root, "select.json"), auto_unbox = TRUE, pretty = TRUE)
+```
+
+The index stores PGA in mm/s^2, and `units.PGA` declares the criterion
+bounds in g.
+
+```{r select}
+selectProject(file = "select.json", root = Root)
+Selection <- fread(file.path(Root, "selection", "selection.csv"))
+Candidates <- fread(file.path(Root, "selection", "candidates.csv"))
+Selection[, .(RecordID, EventID.USGS, EventMagnitude, EventMagnitudeType, PGA)]
+Candidates[, .(RecordID, EventID.USGS, PGA)]
+```
+
+Records belong to the same earthquake when their `EventID.USGS` is equal,
+and with `oneRecordPerEvent` TRUE `selection.csv` keeps one record per
+earthquake, the one with the largest PGA, while `candidates.csv` keeps every
+record that meets a criterion. Before the criteria are applied,
+`EventMagnitude` becomes a moment magnitude where one is published or an Ms
+is converted, and an ML is taken as Mw without conversion. `summary.json`
+counts the selected records and events with the same identity:
+
+```{r summary}
+Summary <- jsonlite::read_json(file.path(Root, "selection", "summary.json"))
+Summary[c("candidates", "records", "events")]
+unlink(Root, recursive = TRUE)
+```
+
+## Further project functions and documentation
+
+`rankProject()` scores candidate spectra against a target band and writes a
+selection, `processProject()` publishes record products and process tables
+from the stages `gmsp`, `trim`, `imf`, `imfTS` and `psa`, `matchProject()`
+composes modal shaping, record scaling and population summaries, and
+`exportProject()` exports project products. The articles
+[Provider files, raw records and indexes](https://kanameishi.github.io/gmsp/articles/providers-index.html),
+[Histories, intensities and spectra](https://kanameishi.github.io/gmsp/articles/signal-intensity.html),
+[Selection, spectral ranking and matching](https://kanameishi.github.io/gmsp/articles/selection-matching.html),
+[Modal decomposition and reconstruction](https://kanameishi.github.io/gmsp/articles/modal.html)
+and
+[Project steps, contracts and products](https://kanameishi.github.io/gmsp/articles/project-pipeline.html)
+describe the families of functions, from the raw database to the run of a
+project. [`help(package = "gmsp")`](https://kanameishi.github.io/gmsp/reference/index.html) lists
+the functions, and their help documents arguments, returned objects and
+effects. The function reference and the books
+[Mathematical Basis](https://kanameishi.github.io/gmsp/books/model-en/index.html)
+and
+[Numerical Implementation](https://kanameishi.github.io/gmsp/books/implementation-en/index.html)
+are published at <https://kanameishi.github.io/gmsp/>.

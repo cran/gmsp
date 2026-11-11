@@ -1,193 +1,189 @@
-#' Build the canonical RawIntensityTable for one or more owners (WIDE).
+# SPDX-FileCopyrightText: 2026 Alejandro Daniel Verri <averri@fi.uba.ar>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Part of gmsp: free software under the GNU Affero General Public License, version 3 or later, see <https://www.gnu.org/licenses/>.
+# Text and data mining reserved for any use not licensed under the AGPL-3: see <https://kanameishi.github.io/tdm-policy.html>.
+#' Build raw acceleration intensity indexes
 #'
-#' For each station with `raw/AT.<RID>.csv` / `.json`, calls
-#' [getRawIntensities()] to compute the 20 AT-derivable scalars per
-#' direction via [getIntensity()]. Emits one row per
-#' `(RecordID, DIR)` - three rows per record.
+#' Measures raw AT records and writes `RawIntensityTable.<OwnerID>.csv`,
+#' with one row per RecordID and DIR and the provider OCID retained.
 #'
-#' Schema:
-#' ```
-#' RecordID, DIR, OCID,
-#'   AI, AId, AIu, ARMS, ATn, ATo, AZC, CAV, CAV5,
-#'   D0575, D0595, D2080, Dmax, EPI, Fs, NP, PDI,
-#'   PGA, TmA, dt
-#' ```
+#' @param pathRecords Records root containing owner, event and station folders.
+#' @param pathIndex Existing destination folder for the index files.
+#' @param owners Owner identifiers; NULL scans immediate directories of
+#'   pathRecords.
+#' @param incremental Reuses records already present in the index when TRUE.
+#' @param force Ignores the incremental cache when TRUE.
+#' @return An invisible named list of row counts for the owners written.
+#' @details The index contains RecordID, DIR, OCID, AI, AId, AIu, ARMS, ATn,
+#'   ATo, AZC, CAV, CAV5, D0575, D0595, D2080, Dmax, EPI, Fs, NP, PDI,
+#'   PGA, TmA and dt, ordered by RecordID and DIR. Values use a millimetre
+#'   length basis. Duration and period fields use one decimal place and dt
+#'   uses four; the remaining measure fields are rounded to integers.
 #'
-#' All amplitude scalars are in `TARGET_UNITS = "mm"`-derived units
-#' (`mm/s2`, `mm/s`, etc. per `getIntensity()` contract).
-#'
-#' @param path.records Absolute path to the records root. Required -- no default.
-#' @param path.index Absolute path to the index root where per-owner CSVs are
-#'   written. Required -- no default.
-#' @param owners     Character vector of `OwnerID`s. `NULL` = scan all.
-#' @param incremental Logical. If `TRUE`, skip records already present in
-#'                    `RawIntensityTable.<O>.csv`. Default: `TRUE`.
-#' @param force      Logical. If `TRUE`, ignore incremental cache and
-#'                   recompute everything. Default: `FALSE`.
-#' @return Invisibly, the per-owner row counts.
+#' VT and DT stations are omitted with a warning naming the station and
+#' quantity. A station failure retains its cause and path. Valid rows are
+#' published; an error of class modulePartialPublication then carries
+#' failures, the partial result and destination path. Existing files are
+#' replaced when the owner has new intensity rows.
 #' @examples
-#' root <- file.path(tempdir(), "gmsp-raw-intensity-table-example")
-#' index <- file.path(tempdir(), "gmsp-raw-intensity-table-index")
-#' unlink(c(root, index), recursive = TRUE)
-#' raw <- file.path(root, "AAA", "E1", "S1", "raw")
-#' dir.create(raw, recursive = TRUE)
-#' dir.create(index)
-#' t <- seq(0, 1, by = 0.01)
-#' data.table::fwrite(
-#'   data.table::data.table(
-#'     H1 = sin(2 * pi * t),
-#'     H2 = 0.5 * cos(2 * pi * t),
-#'     UP = 0.25 * sin(4 * pi * t)
-#'   ),
-#'   file.path(raw, "AT.R1.csv")
-#' )
-#' jsonlite::write_json(
-#'   list(RecordID = "R1", OwnerID = "AAA", EventID = "E1",
-#'        StationID = "S1", NetworkID = "NW",
-#'        DIR = c("H1", "H2", "UP"), OCID = c("H1", "H2", "UP"),
-#'        NP = rep(length(t), 3), dt = 0.01, Fs = 100, Units = "mm"),
-#'   file.path(raw, "AT.R1.json"), auto_unbox = TRUE
-#' )
-#' suppressMessages(buildRawIntensityTable(root, index, owners = "AAA",
-#'                                         incremental = FALSE))
-#' data.table::fread(file.path(index, "RawIntensityTable.AAA.csv"))
-#'
-#' @importFrom data.table data.table rbindlist fwrite setorder setcolorder
+#' Root <- tempfile("buildRawIntensityTable")
+#' Raw <- file.path(Root, "records", "NGAW", "E1", "S1", "raw")
+#' Index <- file.path(Root, "index")
+#' dir.create(Raw, recursive = TRUE)
+#' dir.create(Index)
+#' Time <- seq(0, 5, by = 0.01)
+#' Envelope <- sin(pi * Time / max(Time))^2
+#' data.table::fwrite(data.table::data.table(
+#'   HNE = 1200 * Envelope * sin(2 * pi * 1.5 * Time),
+#'   HNN = 800 * Envelope * sin(2 * pi * 2.5 * Time),
+#'   HNZ = 400 * Envelope * sin(2 * pi * 4 * Time)), file.path(Raw, "AT.R1.csv"))
+#' jsonlite::write_json(list(RecordID = "R1", DIR = c("H1", "H2", "UP"),
+#'   OCID = c("HNE", "HNN", "HNZ"), dt = 0.01), file.path(Raw, "AT.R1.json"),
+#'   auto_unbox = TRUE)
+#' Counts <- buildRawIntensityTable(file.path(Root, "records"), pathIndex = Index)
+#' str(Counts)
+#' Intensity <- data.table::fread(file.path(Index, "RawIntensityTable.NGAW.csv"))
+#' print(Intensity[, c("RecordID", "DIR", "OCID", "PGA", "AI", "D0595")])
+#' unlink(Root, recursive = TRUE)
 #' @export
-buildRawIntensityTable <- function(path.records, path.index, owners = NULL,
+buildRawIntensityTable <- function(pathRecords, pathIndex, owners = NULL,
                                    incremental = TRUE, force = FALSE) {
-  path.records <- path.expand(path.records)
-  path.index   <- path.expand(path.index)
-  if (is.null(owners))
-    owners <- basename(list.dirs(path.records, recursive = FALSE))
-
+  for (Value in list(incremental, force)) {
+    if (!is.logical(Value) || length(Value) != 1L || is.na(Value)) {
+      .stopUsage("incremental and force must be scalar logical values.",
+                 operation = "buildRawIntensityTable")
+    }
+  }
+  pathRecords <- path.expand(pathRecords)
+  pathIndex <- path.expand(pathIndex)
+  if (is.null(owners)) owners <- basename(list.dirs(pathRecords, recursive = FALSE))
   OUT <- list()
-  for (O in owners) {
-    EVS <- list.dirs(file.path(path.records, O), recursive = FALSE)
-    if (length(EVS) == 0L) next
-
-    STA <- unlist(lapply(EVS, list.dirs, recursive = FALSE))
-    if (length(STA) == 0L) next
-
-    IT_PATH <- file.path(path.index, sprintf("RawIntensityTable.%s.csv", O))
-    EXIST   <- if (incremental && !force && file.exists(IT_PATH))
-                 .canonicalRawIntensityTable(fread(IT_PATH),
-                                             "existing intensity table")
-               else NULL
-    DONE    <- if (!is.null(EXIST)) unique(EXIST$RecordID) else character(0L)
-
-    if (length(DONE) > 0L) {
-      STA_DONE <- vapply(STA, function(sd) {
-        F <- list.files(file.path(sd, "raw"),
-                        pattern = "^(AT|VT|DT)\\.(.+)\\.json$")
-        if (length(F) == 1L)
-          sub("^(AT|VT|DT)\\.(.+)\\.json$", "\\2", F) else NA_character_
+  Failures <- list()
+  for (Owner in owners) {
+    DIR <- list.dirs(file.path(pathRecords, Owner), recursive = FALSE)
+    DIR <- unlist(lapply(DIR, list.dirs, recursive = FALSE), use.names = FALSE)
+    if (!length(DIR)) next
+    FILE <- file.path(pathIndex, paste0("RawIntensityTable.", Owner, ".csv"))
+    Existing <- NULL
+    if (incremental && !force && file.exists(FILE)) {
+      Existing <- tryCatch(.canonicalRawIntensityTable(fread(FILE), context = FILE),
+        error = function(e) {
+          Failures[[FILE]] <<- list(operation = "buildRawIntensityTable", unit = Owner,
+                                    path = FILE, cause = e)
+          NULL
+        })
+      if (is.null(Existing)) next
+    }
+    if (!is.null(Existing)) {
+      Done <- unique(Existing$RecordID)
+      AUX <- vapply(DIR, function(path) {
+        FILES <- list.files(file.path(path, "raw"), pattern = "^(AT|VT|DT)\\..+\\.json$")
+        if (length(FILES) == 1L) return(sub("^(AT|VT|DT)\\.(.+)\\.json$", "\\2", FILES))
+        NA_character_
       }, character(1L))
-      STA <- STA[!STA_DONE %in% DONE]
+      DIR <- DIR[!AUX %in% Done]
     }
-    if (length(STA) == 0L) {
-      message(sprintf("[buildRawIntensityTable] %-7s  all up-to-date (skip)", O))
-      next
-    }
-
-    T0   <- Sys.time()
-    FAIL <- 0L
-    LIST <- lapply(STA, function(sd) {
-      tryCatch(getRawIntensities(path = sd),
-               error = function(e) {
-                 FAIL <<- FAIL + 1L
-                 message(sprintf("[%s] FAIL %s: %s", O, basename(sd), e$message))
-                 NULL
-               })
+    if (!length(DIR)) next
+    LIST <- lapply(DIR, function(path) {
+      tryCatch({
+        DT <- .measureRawIntensities(path)
+        if (is.null(DT)) return(NULL)
+        .canonicalRawIntensityTable(DT, context = path)
+      }, error = function(e) {
+        Failures[[path]] <<- list(operation = "buildRawIntensityTable", unit = basename(path),
+                                  path = path, cause = e)
+        NULL
+      })
     })
-    LIST <- LIST[!vapply(LIST, is.null, logical(1L))]
+    LIST <- Filter(Negate(is.null), LIST)
     if (!length(LIST)) next
-    LIST <- lapply(seq_along(LIST), function(i) {
-      .canonicalRawIntensityTable(LIST[[i]],
-                                  sprintf("new intensity table %d", i))
-    })
-    .assertRawIntensitySchema(LIST, "new intensity tables")
-    NEW <- rbindlist(LIST, use.names = TRUE)
-    if (nrow(NEW) == 0L) next
-    # Provider aliases (same signal under multiple (E,S)) result in repeated
-    # station dirs that share AT.<RID>.csv/.json. Each gets processed
-    # independently above, producing byte-identical duplicate rows.
-    # Intensities are a function of the signal alone - dedup to (RID, DIR).
-    NEW <- unique(NEW)
-    NEW <- .canonicalRawIntensityTable(NEW, "new intensity table")
-
-    DT <- if (is.null(EXIST)) {
-      NEW
-    } else {
-      .assertRawIntensitySchema(list(EXIST = EXIST, NEW = NEW),
-                                "incremental intensity tables")
-      rbind(EXIST[!RecordID %in% NEW$RecordID], NEW, use.names = TRUE)
+    DT <- unique(rbindlist(LIST, use.names = TRUE))
+    if (!nrow(DT)) next
+    if (!is.null(Existing)) {
+      DT <- rbind(Existing[!RecordID %in% DT$RecordID], DT, use.names = TRUE)
     }
     setorder(DT, RecordID, DIR)
-    fwrite(DT, IT_PATH)
-    OUT[[O]] <- nrow(DT)
-    message(sprintf("[buildRawIntensityTable] %-7s  rows=%-7d records=%-6d  new=%-5d  fail=%d  %.1f sec",
-                    O, nrow(DT), nrow(DT) %/% 3L, nrow(NEW) %/% 3L, FAIL,
-                    as.numeric(difftime(Sys.time(), T0, units = "secs"))))
+    tryCatch({
+      fwrite(DT, FILE, eol = "\n")
+      OUT[[Owner]] <- nrow(DT)
+    }, error = function(e) {
+      Failures[[FILE]] <<- list(operation = "buildRawIntensityTable", unit = Owner,
+                                path = FILE, cause = e)
+    })
   }
+  if (length(Failures)) .stopPartialPublication(
+    "Raw intensity index has failures at: ", paste(names(Failures), collapse = ", "),
+    operation = "buildRawIntensityTable", failures = Failures, result = OUT, path = pathIndex)
   invisible(OUT)
 }
 
-#' @noRd
-.rawIntensityCols <- function() {
-  c("RecordID", "DIR", "OCID",
-    "AI", "AId", "AIu", "ARMS", "ATn", "ATo", "AZC", "CAV", "CAV5",
-    "D0575", "D0595", "D2080", "Dmax", "EPI", "Fs", "NP", "PDI",
-    "PGA", "TmA", "dt")
+.canonicalRawIntensityTable <- function(data, context) {
+  COLS <- c("RecordID", "DIR", "OCID", "AI", "AId", "AIu", "ARMS", "ATn", "ATo", "AZC",
+            "CAV", "CAV5", "D0575", "D0595", "D2080", "Dmax", "EPI", "Fs", "NP", "PDI",
+            "PGA", "TmA", "dt")
+  if (!setequal(names(data), COLS) || anyDuplicated(names(data))) {
+    stop("Raw intensity schema mismatch at ", context, ": missing=",
+         paste(setdiff(COLS, names(data)), collapse = ", "), "; extra=",
+         paste(setdiff(names(data), COLS), collapse = ", "), call. = FALSE)
+  }
+  setcolorder(data, COLS)
+  COLS <- c("RecordID", "DIR", "OCID")
+  data[, (COLS) := lapply(.SD, as.character), .SDcols = COLS]
+  COLS <- c("AI", "AId", "AIu", "ARMS", "ATn", "ATo", "AZC", "CAV", "CAV5",
+            "EPI", "Fs", "NP", "PDI", "PGA")
+  data[, (COLS) := lapply(.SD, as.integer), .SDcols = COLS]
+  COLS <- c("D0575", "D0595", "D2080", "Dmax", "TmA", "dt")
+  data[, (COLS) := lapply(.SD, as.numeric), .SDcols = COLS]
+  data[]
 }
 
-#' @noRd
-.canonicalRawIntensityTable <- function(DT, context) {
-  COLS <- .rawIntensityCols()
-  MISS <- setdiff(COLS, names(DT))
-  EXTRA <- setdiff(names(DT), COLS)
-  if (length(MISS) || length(EXTRA)) {
-    stop(sprintf("buildRawIntensityTable() %s schema mismatch: missing=%s extra=%s",
-                 context,
-                 paste(MISS, collapse = ", "),
-                 paste(EXTRA, collapse = ", ")), call. = FALSE)
+.measureRawIntensities <- function(path) {
+  DIR <- file.path(path.expand(path), "raw")
+  CSV <- list.files(DIR, pattern = "^(AT|VT|DT)\\..+\\.csv$", full.names = TRUE)
+  JSON <- list.files(DIR, pattern = "^(AT|VT|DT)\\..+\\.json$", full.names = TRUE)
+  if (!length(CSV) && !length(JSON)) return(NULL)
+  if (length(CSV) != 1L || length(JSON) != 1L ||
+      sub("\\.csv$", ".json", CSV) != JSON) {
+    stop("Expected one matching raw CSV/JSON pair at ", path, call. = FALSE)
   }
-
-  setcolorder(DT, COLS)
-  COLS.character <- c("RecordID", "DIR", "OCID")
-  COLS.integer <- c("AI", "AId", "AIu", "ARMS", "ATn", "ATo", "AZC",
-                    "CAV", "CAV5", "EPI", "Fs", "NP", "PDI", "PGA")
-  COLS.numeric <- c("D0575", "D0595", "D2080", "Dmax", "TmA", "dt")
-
-  DT[, (COLS.character) := lapply(.SD, as.character),
-     .SDcols = COLS.character]
-  DT[, (COLS.integer) := lapply(.SD, as.integer),
-     .SDcols = COLS.integer]
-  DT[, (COLS.numeric) := lapply(.SD, as.numeric),
-     .SDcols = COLS.numeric]
+  Quantity <- sub("^([ADV]T)\\..+$", "\\1", basename(CSV))
+  if (Quantity != "AT") {
+    .warnSignal("Skipping ", path, " with quantity ", Quantity,
+                 "; the raw intensity index contains AT records.", operation = "buildRawIntensityTable")
+    return(NULL)
+  }
+  RecordID <- sub("^AT\\.(.+)\\.csv$", "\\1", basename(CSV))
+  AUX <- .readRawPair(CSV, key = list(RecordID = RecordID))
+  Metadata <- AUX$metadata
+  DT <- AUX$data
+  if (is.null(Metadata$DIR) || is.null(Metadata$OCID) ||
+      length(Metadata$DIR) != length(Metadata$OCID)) {
+    stop("Raw sidecar must contain matching DIR and OCID arrays.", call. = FALSE)
+  }
+  Map <- data.table(DIR = as.character(Metadata$DIR), OCID = as.character(Metadata$OCID))
+  if (anyNA(Map) || anyDuplicated(Map$DIR) || anyDuplicated(Map$OCID) ||
+      !setequal(Map$DIR, c("H1", "H2", "UP")) || !setequal(names(DT), Map$OCID)) {
+    stop("Raw CSV columns and sidecar DIR/OCID mapping disagree.", call. = FALSE)
+  }
+  DT[, t := (seq_len(.N) - 1L) * Metadata$dt]
+  DT <- melt(DT, id.vars = "t", variable.name = "OCID", value.name = "s",
+              variable.factor = FALSE)
+  DT[, `:=`(RecordID = RecordID, ID = "AT")]
+  DT <- measureIntensitiesTSL(DT, by = "RecordID", unitsSource = "mm", unitsTarget = "mm")
+  if (anyDuplicated(DT, by = c("RecordID", "OCID", "IM"))) {
+    stop("Duplicate (RecordID, OCID, IM) rows in raw intensities.", call. = FALSE)
+  }
+  DT <- dcast(DT, RecordID + OCID ~ IM, value.var = "value")
+  COLS <- c("PGA", "ARMS", "AI", "AIu", "AId", "ATo", "ATn", "CAV", "CAV5",
+            "EPI", "PDI", "NP", "Fs", "AZC")
+  for (j in COLS) set(DT, j = j, value = as.integer(round(DT[[j]])))
+  COLS <- c("TmA", "D0595", "D2080", "D0575", "Dmax")
+  for (j in COLS) set(DT, j = j, value = round(DT[[j]], 1L))
+  DT[, dt := round(dt, 4L)]
+  DT <- Map[DT, on = "OCID"]
+  DT[, DIR := factor(DIR, levels = c("H1", "H2", "UP"))]
+  setorder(DT, RecordID, DIR)
+  DT[, DIR := as.character(DIR)]
+  setcolorder(DT, c("RecordID", "DIR", "OCID"))
   DT[]
-}
-
-#' @noRd
-.assertRawIntensitySchema <- function(LIST, context) {
-  if (is.null(names(LIST))) {
-    names(LIST) <- sprintf("table%d", seq_along(LIST))
-  }
-  SCHEMA <- lapply(LIST, function(DT) {
-    if (!data.table::is.data.table(DT)) {
-      stop(sprintf("buildRawIntensityTable() %s contains a non-data.table",
-                   context), call. = FALSE)
-    }
-    paste(names(DT),
-          vapply(DT, function(col) paste(class(col), collapse = "/"),
-                 character(1L)),
-          sep = ":")
-  })
-  SAME <- vapply(SCHEMA, identical, logical(1L), SCHEMA[[1L]])
-  if (!all(SAME)) {
-    stop(sprintf("buildRawIntensityTable() %s schema mismatch before binding: %s",
-                 context, paste(names(SAME)[!SAME], collapse = ", ")),
-         call. = FALSE)
-  }
-  invisible(TRUE)
 }

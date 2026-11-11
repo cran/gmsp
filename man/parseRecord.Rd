@@ -2,42 +2,41 @@
 % Please edit documentation in R/parseRecord.R
 \name{parseRecord}
 \alias{parseRecord}
-\title{Parse one record (event x station x owner) into a LONG time-series table.}
+\title{Parse provider files for one record}
 \usage{
-parseRecord(.x, path)
+parseRecord(record, path)
 }
 \arguments{
-\item{.x}{\code{data.table} subset of master for ONE record (same \code{OwnerID},
-\code{EventID}, \code{StationID}).}
+\item{record}{A data.table with OwnerID, EventID, StationID and FileID.
+OwnerID, EventID and StationID identify one station record.}
 
-\item{path}{Absolute path to the records root. The function expects
-per-station files under
-\verb{<path>/<OwnerID>/<EventID>/<StationID>/raw.owner/}. Required -- no
-default.}
+\item{path}{Path to the records root.}
 }
 \value{
-LONG \code{data.table(t, OCID, s)}.
+A long data.table with \code{t, OCID, s} in native units.
 }
 \description{
-Reads \verb{<path>/<OwnerID>/<EventID>/<StationID>/raw.owner/} according
-to the owner's format and returns LONG \verb{(t, OCID, s)}. NPTS divergence
-between components is not enforced.
+Reads unique FileID entries under
+\code{path/OwnerID/EventID/StationID/raw.owner/} using the owner's format.
 }
 \details{
-Quantity (\code{ID = "AT"|"VT"|"DT"}) is NOT set here.
+Missing keys, NA keys, multiple records and owners without a
+format raise errors before file reading. Duplicate FileID entries are
+read once. This operation does not add ID, convert amplitudes or write files.
 }
 \examples{
-root <- file.path(tempdir(), "gmsp-parse-example")
-unlink(root, recursive = TRUE)
-raw <- file.path(root, "ESM", "E1", "S1", "raw.owner")
-dir.create(raw, recursive = TRUE)
-writeLines(c("0 1", "0.01 2", "0.02 3"), file.path(raw, "N_acc.txt"))
-writeLines(c("0 2", "0.01 3", "0.02 4"), file.path(raw, "E_acc.txt"))
-writeLines(c("0 0", "0.01 1", "0.02 0"), file.path(raw, "Z_acc.txt"))
-rows <- data.table::data.table(
-  OwnerID = "ESM", EventID = "E1", StationID = "S1",
-  FileID = c("N_acc.txt", "E_acc.txt", "Z_acc.txt")
-)
-parseRecord(rows, path = root)
-
+Root <- tempfile("parseRecord")
+Station <- file.path(Root, "NGAW", "E1", "S1", "raw.owner")
+dir.create(Station, recursive = TRUE)
+Samples <- c(HNE = "0.01 0.03 -0.02 0.01", HNN = "0.02 -0.01 0.01 0",
+             HNZ = "0 0.01 -0.01 0")
+for (Channel in names(Samples)) {
+  writeLines(c("header", paste0("Event, date, station, ", Channel), "units",
+               "NPTS= 4, DT= 0.01 SEC", Samples[[Channel]]),
+             file.path(Station, paste0(Channel, ".AT2")))
+}
+Record <- data.table::data.table(OwnerID = "NGAW", EventID = "E1",
+  StationID = "S1", FileID = paste0(names(Samples), ".AT2"))
+parseRecord(Record, path = Root)
+unlink(Root, recursive = TRUE)
 }

@@ -1,60 +1,64 @@
-#' Parse one record (event x station x owner) into a LONG time-series table.
+# SPDX-FileCopyrightText: 2026 Alejandro Daniel Verri <averri@fi.uba.ar>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Part of gmsp: free software under the GNU Affero General Public License, version 3 or later, see <https://www.gnu.org/licenses/>.
+# Text and data mining reserved for any use not licensed under the AGPL-3: see <https://kanameishi.github.io/tdm-policy.html>.
+#' Parse provider files for one record
 #'
-#' Reads `<path>/<OwnerID>/<EventID>/<StationID>/raw.owner/` according
-#' to the owner's format and returns LONG `(t, OCID, s)`. NPTS divergence
-#' between components is not enforced.
+#' Reads unique FileID entries under
+#' \code{path/OwnerID/EventID/StationID/raw.owner/} using the owner's format.
 #'
-#' Quantity (`ID = "AT"|"VT"|"DT"`) is NOT set here.
-#'
-#' @param .x `data.table` subset of master for ONE record (same `OwnerID`,
-#'   `EventID`, `StationID`).
-#' @param path Absolute path to the records root. The function expects
-#'   per-station files under
-#'   `<path>/<OwnerID>/<EventID>/<StationID>/raw.owner/`. Required -- no
-#'   default.
-#' @return LONG `data.table(t, OCID, s)`.
+#' @param record A data.table with OwnerID, EventID, StationID and FileID.
+#'   OwnerID, EventID and StationID identify one station record.
+#' @param path Path to the records root.
+#' @return A long data.table with \code{t, OCID, s} in native units.
+#' @details Missing keys, NA keys, multiple records and owners without a
+#'   format raise errors before file reading. Duplicate FileID entries are
+#'   read once. This operation does not add ID, convert amplitudes or write files.
 #' @examples
-#' root <- file.path(tempdir(), "gmsp-parse-example")
-#' unlink(root, recursive = TRUE)
-#' raw <- file.path(root, "ESM", "E1", "S1", "raw.owner")
-#' dir.create(raw, recursive = TRUE)
-#' writeLines(c("0 1", "0.01 2", "0.02 3"), file.path(raw, "N_acc.txt"))
-#' writeLines(c("0 2", "0.01 3", "0.02 4"), file.path(raw, "E_acc.txt"))
-#' writeLines(c("0 0", "0.01 1", "0.02 0"), file.path(raw, "Z_acc.txt"))
-#' rows <- data.table::data.table(
-#'   OwnerID = "ESM", EventID = "E1", StationID = "S1",
-#'   FileID = c("N_acc.txt", "E_acc.txt", "Z_acc.txt")
-#' )
-#' parseRecord(rows, path = root)
-#'
-#' @importFrom data.table data.table rbindlist
+#' Root <- tempfile("parseRecord")
+#' Station <- file.path(Root, "NGAW", "E1", "S1", "raw.owner")
+#' dir.create(Station, recursive = TRUE)
+#' Samples <- c(HNE = "0.01 0.03 -0.02 0.01", HNN = "0.02 -0.01 0.01 0",
+#'              HNZ = "0 0.01 -0.01 0")
+#' for (Channel in names(Samples)) {
+#'   writeLines(c("header", paste0("Event, date, station, ", Channel), "units",
+#'                "NPTS= 4, DT= 0.01 SEC", Samples[[Channel]]),
+#'              file.path(Station, paste0(Channel, ".AT2")))
+#' }
+#' Record <- data.table::data.table(OwnerID = "NGAW", EventID = "E1",
+#'   StationID = "S1", FileID = paste0(names(Samples), ".AT2"))
+#' parseRecord(Record, path = Root)
+#' unlink(Root, recursive = TRUE)
 #' @export
-parseRecord <- function(.x, path) {
-  PATH.records <- path.expand(path)
-  AUX <- .x[1L]
-  fmt <- .OWNER_FORMAT[[AUX$OwnerID]]
-  stopifnot(!is.null(fmt))
-
-  DIR   <- file.path(PATH.records, AUX$OwnerID, AUX$EventID, AUX$StationID, "raw.owner")
-  FILES <- unique(.x$FileID)
-
-  rbindlist(lapply(FILES, function(s) {
-    FILE <- file.path(DIR, s)
-    if      (fmt == "AT2")                           readAT2(FILE)
-    else if (fmt == "TWO_COL")                       readTwoCol(FILE)
-    else if (fmt %in% c("TRA","TRZ","TRB","TRC"))    readTR(FILE, fmt)
-    else if (fmt %in% c("ACA","LIS","ACB"))          readAC(FILE, fmt)
-    else if (fmt == "V2A")                           readV2A(FILE)
-    else if (fmt == "V2")                            readV2(FILE)
-    else if (fmt == "ISEE")                          readISEE(FILE)
-    else stop("unknown format: ", fmt)
+parseRecord <- function(record, path) {
+  COLS <- c("OwnerID", "EventID", "StationID", "FileID")
+  if (!is.data.table(record) || !all(COLS %in% names(record)) || !nrow(record)) {
+    .stopUsage("record requires OwnerID, EventID, StationID and FileID rows.",
+               operation = "parseRecord")
+  }
+  for (j in COLS) {
+    if (!is.character(record[[j]]) || anyNA(record[[j]]) || any(!nzchar(record[[j]]))) {
+      .stopUsage(j, " must contain nonempty character keys.", operation = "parseRecord")
+    }
+  }
+  if (any(vapply(record[, .(OwnerID, EventID, StationID)], uniqueN, integer(1L)) != 1L)) {
+    .stopUsage("record must identify one owner, event and station.", operation = "parseRecord")
+  }
+  Format <- .ownerFormat[record$OwnerID[1L]]
+  if (is.na(Format)) .stopUsage("Owner has no provider format: ", record$OwnerID[1L], operation = "parseRecord")
+  if (!is.character(path) || length(path) != 1L || is.na(path) || !nzchar(path)) {
+    .stopUsage("path must be one nonempty records root.", operation = "parseRecord")
+  }
+  DIR <- file.path(path.expand(path), record$OwnerID[1L], record$EventID[1L],
+                   record$StationID[1L], "raw.owner")
+  rbindlist(lapply(unique(record$FileID), function(x) {
+    readProviderFile(file = file.path(DIR, x), format = unname(Format))
   }))
 }
 
-#' @noRd
-.OWNER_FORMAT <- c(
-  CAL   = "TWO_COL", CENA = "TWO_COL", CLSMD = "TWO_COL", ESM   = "TWO_COL",
-  NCEDC = "TWO_COL", NN   = "TWO_COL", PNSN  = "TWO_COL", SCEDC = "TWO_COL",
-  CESMD = "V2",      GSC  = "TRA",     IGP   = "ACA",     NGAW  = "AT2",
-  NWZ   = "V2A",     UCR  = "LIS",     ISEE  = "ISEE"
+.ownerFormat <- c(
+  CAL = "TWO_COL", CENA = "TWO_COL", CLSMD = "TWO_COL", ESM = "TWO_COL",
+  NCEDC = "TWO_COL", NN = "TWO_COL", PNSN = "TWO_COL", SCEDC = "TWO_COL",
+  CESMD = "V2", GSC = "TRA", IGP = "ACA", NGAW = "AT2", NWZ = "V2A",
+  UCR = "LIS", ISEE = "ISEE"
 )

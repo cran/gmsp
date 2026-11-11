@@ -2,76 +2,59 @@
 % Please edit documentation in R/extractRecord.R
 \name{extractRecord}
 \alias{extractRecord}
-\title{Extract one record to \verb{raw/<KIND>.<RecordID>.csv} + \verb{<KIND>.<RecordID>.json}.}
+\title{Extract a provider record to raw files}
 \usage{
-extractRecord(.x, path, align = "max", kind = NULL)
+extractRecord(record, path, align = "max", kind = NULL)
 }
 \arguments{
-\item{.x}{\code{data.table} subset for ONE record.}
+\item{record}{Table for one owner, event and station, with FileID and Units;
+NetworkID is retained in the sidecar when supplied.}
 
-\item{path}{Absolute path to the records root. The function writes outputs
-under \verb{<path>/<OwnerID>/<EventID>/<StationID>/raw/}. Required -- no
-default.}
+\item{path}{Records root containing OwnerID/EventID/StationID/raw.owner.}
 
-\item{align}{\code{"max"} (pad to longest, default) or \code{"min"} (truncate).}
+\item{align}{Alignment by sample count: "max" pads with trailing zeros;
+"min" truncates. Neither choice interpolates time.}
 
-\item{kind}{Optional \code{"AT"|"VT"|"DT"} override. When \code{NULL} (default)
-KIND is derived from \code{Key$Units} via \code{.parseKind()}.}
+\item{kind}{Quantity override AT, VT or DT; NULL derives the quantity from
+Units. An override still requires recognisable Units.}
 }
 \value{
-Absolute path to the written \verb{<KIND>.<RecordID>.csv}, or \code{NULL} (skip).
+Absolute path to the written CSV, or NULL when classification or
+unit interpretation cannot produce a record.
 }
 \description{
-Pipeline: \code{parseRecord} -> \code{mapComponents(rotate = FALSE)} -> capture pre-align NP and
-\code{DIR}/\code{OCID} mapping -> \code{alignComponents} -> pivot WIDE by provider
-\code{OCID} -> md5-16 hash -> write. The function returns \code{NULL} and writes
-nothing in three
-skip paths:
-\enumerate{
-\item Component classification cannot map the record (arrays with > 3
-OCIDs, 2-component records, or records with no vertical channel
-in the vertical-component vocabulary).
-\item The provider \code{Units} string cannot be normalised (\code{.parseUnits}
-returns \code{NA_character_}, so the scale factor \code{K} is \code{NULL}).
-\item \code{kind} is left at its default \code{NULL} and \code{.parseKind(Key$Units)}
-returns \code{NA_character_} (kind cannot be derived from \code{Units}).
-}
+Reads and classifies one provider record without rotation, converts its
+amplitudes to a millimetre length basis and writes a CSV and JSON pair.
 }
 \details{
-\code{KIND} is one of \code{"AT"} (acceleration), \code{"VT"} (velocity), \code{"DT"}
-(displacement). By default it is derived from \code{Key$Units} via
-\code{.parseKind()}. Pass \code{kind} explicitly to override -- e.g.
-\code{kind = "VT"} for blasting records whose \code{Units} may not be
-machine-parseable.
+The CSV retains provider OCID columns and omits time, and its lines
+end with LF on every system. RecordID is the first 16 characters of the
+MD5 digest of the CSV bytes, so it does not depend on the system. The JSON
+stores DIR, OCID and pre-alignment NP arrays in H1, H2, UP order; peaks
+are measured after alignment. Its dt and Fs use nine and six decimal
+places, respectively, and Units is "mm".
 
-Old contents of \verb{raw/} are unlinked before writing (idempotent).
-
-JSON sidecar schema:
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{RecordID, OwnerID, EventID, StationID, NetworkID,
-FileID            (scalar = "<KIND>.<RID>.csv"),
-DIR               (array, ["H1","H2","UP"]),
-OCID              (array of 3, provider channels in DIR order),
-NP                (array of 3, pre-align NP per DIR),
-PGA / PGV / PGD   (array of 3, peak |s| per DIR, post-align;
-                   field name derived from KIND[1] -> PGA/PGV/PGD),
-dt, Fs, Units     (scalars).
-}\if{html}{\out{</div>}}
+Existing raw contents are removed after classification and unit resolution,
+before alignment and writing. A later failure can leave partial products;
+extraction is not atomic. The supplied table is not modified.
 }
 \examples{
-root <- file.path(tempdir(), "gmsp-extract-example")
-unlink(root, recursive = TRUE)
-raw <- file.path(root, "ESM", "E1", "S1", "raw.owner")
-dir.create(raw, recursive = TRUE)
-writeLines(c("0 1", "0.01 2", "0.02 3"), file.path(raw, "N_acc.txt"))
-writeLines(c("0 2", "0.01 3", "0.02 4"), file.path(raw, "E_acc.txt"))
-writeLines(c("0 0", "0.01 1", "0.02 0"), file.path(raw, "Z_acc.txt"))
-rows <- data.table::data.table(
-  OwnerID = "ESM", EventID = "E1", StationID = "S1",
-  NetworkID = "NW", Units = "cm",
-  FileID = c("N_acc.txt", "E_acc.txt", "Z_acc.txt")
-)
-path <- extractRecord(rows, path = root, kind = "AT")
-basename(path)
-
+Root <- tempfile("extractRecord")
+Station <- file.path(Root, "NGAW", "E1", "S1", "raw.owner")
+dir.create(Station, recursive = TRUE)
+Samples <- c(HNE = "0.01 0.03 -0.02 0.01", HNN = "0.02 -0.01 0.01 0",
+             HNZ = "0 0.01 -0.01 0")
+for (Channel in names(Samples)) {
+  writeLines(c("header", paste0("Event, date, station, ", Channel), "units",
+               "NPTS= 4, DT= 0.01 SEC", Samples[[Channel]]),
+             file.path(Station, paste0(Channel, ".AT2")))
+}
+Record <- data.table::data.table(OwnerID = "NGAW", EventID = "E1",
+  StationID = "S1", FileID = paste0(names(Samples), ".AT2"), Units = "g")
+CSV <- extractRecord(Record, path = Root)
+basename(CSV)
+data.table::fread(CSV)
+Sidecar <- jsonlite::read_json(sub("[.]csv$", ".json", CSV), simplifyVector = TRUE)
+str(Sidecar[c("DIR", "OCID", "NP", "PGA", "dt", "Units")])
+unlink(Root, recursive = TRUE)
 }

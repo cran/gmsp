@@ -2,42 +2,44 @@
 % Please edit documentation in R/writeSelection.R
 \name{writeSelection}
 \alias{writeSelection}
-\title{Write a selection table to \verb{selection/<name>.csv} / \code{.json}.}
+\title{Write a station-folder selection}
 \usage{
-writeSelection(DT, name, path)
+writeSelection(data, name, path)
 }
 \arguments{
-\item{DT}{record metadata \code{data.table} after user filters.}
+\item{data}{Table containing OwnerID, EventID and StationID.}
 
-\item{name}{identifier for the selection, used as filename stem.}
+\item{name}{Nonempty selection name used as the output filename stem.}
 
-\item{path}{Absolute path to the directory where \verb{<name>.csv} and
-\verb{<name>.json} will be written. Required -- no default.}
+\item{path}{Nonempty destination directory, created recursively if needed.}
 }
 \value{
-Invisibly, the deduplicated selection \code{data.table}.
+Invisibly, a data.table with OwnerID, EventID and StationID,
+sorted by these keys and without duplicate rows.
 }
 \description{
-Deduplicates \verb{(OwnerID, EventID, StationID)} so the CSV
-carries one row per station folder (= one record). The JSON sidecar
-captures audit metadata: name, timestamp, total hits, hits per owner.
+Writes unique station-folder keys to CSV and a JSON summary.
 }
 \details{
-The CSV is the canonical input contract for any downstream
-orchestrator that iterates over a selection: each row identifies one
-\verb{(OwnerID, EventID, StationID)} station folder under whichever
-records root the orchestrator was given.
+The files are named from name with .csv and .json suffixes.
+Existing files at these paths are overwritten. The JSON fields are
+name, dateUTC, nHits and hitsPerOwner; dateUTC uses UTC to the second.
+An empty selection has nHits zero. RecordID is not part of these keys.
+A JSON failure after CSV publication raises modulePartialPublication
+with the original condition, partial result and affected paths;
+the CSV remains. Completion signals a moduleNote condition.
+Missing required columns and invalid name/path arguments are input errors.
 }
 \examples{
-x <- data.table::data.table(
-  OwnerID = c("AAA", "AAA"),
-  EventID = c("E1", "E1"),
-  StationID = c("S1", "S1"),
-  DIR = c("H1", "H2")
-)
-path <- file.path(tempdir(), "gmsp-selection-example")
-unlink(path, recursive = TRUE)
-suppressMessages(writeSelection(x, name = "demo", path = path))
-list.files(path)
-
+Root <- tempfile("writeSelection")
+Records <- data.table::data.table(OwnerID = "AAA", EventID = c("E1", "E1", "E2"),
+                                  StationID = c("S1", "S2", "S1"))
+Selection <- writeSelection(Records, name = "demo", path = Root)
+print(Selection)
+list.files(Root)
+str(jsonlite::read_json(file.path(Root, "demo.json")))
+unlink(Root, recursive = TRUE)
+}
+\seealso{
+\code{\link[=selectRecords]{selectRecords()}}
 }

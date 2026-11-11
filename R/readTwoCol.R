@@ -1,40 +1,29 @@
-#' Read a 2-column whitespace-delimited ASCII record.
-#'
-#' Time in column 1 (seconds), signal in column 2. No header. Separator
-#' (space or tab) is auto-detected by `fread`. Trailing all-NA columns
-#' (some providers leave a trailing tab -> phantom column) are dropped.
-#'
-#' OCID extracted from filename. Three known patterns:
-#'   - SEED-like:  `NET.STA.LOC.CHA__...`            -> CHA
-#'   - CENA:       `<date>_<time>_NET.STA.CHA_AccTH` -> CHA
-#'   - CLSMD:      `<X>_acc.txt`                     -> X
-#'
-#' @param file Path to the file.
-#' @return LONG `data.table(t, OCID, s)`.
-#' @examples
-#' dir <- tempfile()
-#' dir.create(dir)
-#' file <- file.path(dir, "N_acc.txt")
-#' writeLines(c("0 1", "0.01 2"), file)
-#' readTwoCol(file)
-#'
-#' @importFrom data.table fread data.table
-#' @export
-readTwoCol <- function(file) {
-  DT <- fread(file, header = FALSE)
-  DT <- DT[, .SD, .SDcols = !vapply(DT,
-                                    function(x) is.logical(x) && all(is.na(x)),
-                                    logical(1L))]
-  stopifnot(ncol(DT) == 2L)
+# SPDX-FileCopyrightText: 2026 Alejandro Daniel Verri <averri@fi.uba.ar>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Part of gmsp: free software under the GNU Affero General Public License, version 3 or later, see <https://www.gnu.org/licenses/>.
+# Text and data mining reserved for any use not licensed under the AGPL-3: see <https://kanameishi.github.io/tdm-policy.html>.
+.readTwoCol <- function(file) {
+  DT <- fread(file = file, header = FALSE)
+  DT <- DT[, .SD, .SDcols = !vapply(DT, function(x) {
+    is.logical(x) && all(is.na(x))
+  }, logical(1L))]
+  if (ncol(DT) != 2L) {
+    .stopUsage("TWO_COL requires two columns.", operation = "readProviderFile")
+  }
   setnames(DT, c("t", "s"))
-  AUX  <- basename(file)
-  OCID <- if      (grepl("^[^.]+\\.[^.]+\\.[^.]*\\.[^.]+?__", AUX, perl = TRUE))
-               sub("^[^.]+\\.[^.]+\\.[^.]*\\.([^.]+?)__.*",   "\\1", AUX, perl = TRUE)
-          else if (grepl("\\.[A-Z0-9]+_AccTH\\.txt$",          AUX, perl = TRUE))
-               sub(".*\\.([A-Z0-9]+)_AccTH\\.txt$",            "\\1", AUX, perl = TRUE)
-          else if (grepl("^[NEZ]_acc\\.",                      AUX, perl = TRUE))
-               sub("^([NEZ])_acc\\..*",                        "\\1", AUX, perl = TRUE)
-          else stop("readTwoCol: unknown filename pattern: ", AUX)
-  stopifnot(nzchar(OCID))
+  FILE <- basename(file)
+  OCID <- NULL
+  if (grepl("^[^.]+\\.[^.]+\\.[^.]*\\.[^.]+?__", FILE, perl = TRUE)) {
+    OCID <- sub("^[^.]+\\.[^.]+\\.[^.]*\\.([^.]+?)__.*", "\\1", FILE, perl = TRUE)
+  }
+  if (is.null(OCID) && grepl("\\.[A-Z0-9]+_AccTH\\.txt$", FILE, perl = TRUE)) {
+    OCID <- sub(".*\\.([A-Z0-9]+)_AccTH\\.txt$", "\\1", FILE, perl = TRUE)
+  }
+  if (is.null(OCID) && grepl("^[NEZ]_acc\\.", FILE, perl = TRUE)) {
+    OCID <- sub("^([NEZ])_acc\\..*", "\\1", FILE, perl = TRUE)
+  }
+  if (is.null(OCID) || !nzchar(OCID)) {
+    .stopUsage("Unknown TWO_COL filename pattern: ", FILE, operation = "readProviderFile")
+  }
   DT[, OCID := OCID][, .(t, OCID, s)]
 }

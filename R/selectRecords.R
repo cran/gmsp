@@ -1,51 +1,41 @@
-#' Select records from a record metadata table.
+# SPDX-FileCopyrightText: 2026 Alejandro Daniel Verri <averri@fi.uba.ar>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Part of gmsp: free software under the GNU Affero General Public License, version 3 or later, see <https://www.gnu.org/licenses/>.
+# Text and data mining reserved for any use not licensed under the AGPL-3: see <https://kanameishi.github.io/tdm-policy.html>.
+#' Select record identities
 #'
-#' Filters a record metadata table by any combination of `RecordID`,
-#' `EventID`, `StationID`, and `OwnerID`, then deduplicates to one row
-#' per record. Output is the canonical selection shape consumed by the
-#' [readTS()] family ([readAT()] / [readVT()] / [readDT()]) and
-#' [writeSelection()].
+#' Intersects identity filters and returns unique record keys without
+#' modifying the supplied table.
 #'
-#' Filter args are character vectors (length 1+). `NULL` means "no
-#' restriction on this dimension". With all `NULL`, returns every
-#' record in `M` -- protect with explicit filters for non-trivial work.
-#'
-#' For richer filters (magnitude, distance, intensity), filter `M`
-#' first and pass the subset:
-#' ```r
-#' selectRecords(M[EventMagnitude > 7 & Repi < 100 & PGA > 600 & DIR == "H1"])
-#' ```
-#'
-#' @param M         record metadata `data.table`.
-#' @param RecordID  character. Filter by `RecordID`. Default `NULL`.
-#' @param EventID   character. Filter by `EventID`. Default `NULL`.
-#' @param StationID character. Filter by `StationID`. Default `NULL`.
-#' @param OwnerID   character. Filter by `OwnerID`. Default `NULL`.
-#' @return `data.table(RecordID, OwnerID, EventID, StationID)`.
+#' @param data Table containing RecordID, OwnerID, EventID and StationID.
+#' @param recordID,eventID,stationID,ownerID Identity vectors for the
+#'   corresponding columns. NULL leaves a dimension unrestricted;
+#'   an empty vector selects zero rows.
+#' @return A data.table with RecordID, OwnerID, EventID and StationID,
+#'   in that column order, sorted by OwnerID, EventID and StationID.
+#' @details Duplicate key rows are collapsed. With every filter NULL,
+#'   the result contains the unique keys of the supplied table.
+#'   Missing required columns are input errors. The operation performs
+#'   no file access.
+#' @seealso [readRecordTSL()], [writeSelection()]
 #' @examples
-#' master <- data.table::data.table(
-#'   RecordID = c("R1", "R1", "R2"),
-#'   OwnerID = c("AAA", "AAA", "BBB"),
-#'   EventID = c("E1", "E1", "E2"),
-#'   StationID = c("S1", "S1", "S2"),
-#'   DIR = c("H1", "H2", "H1")
-#' )
-#' selectRecords(master, OwnerID = "AAA")
-#'
-#' @importFrom data.table setorder
+#' Records <- data.table::data.table(RecordID = c("R1", "R2", "R3"), OwnerID = "AAA",
+#'   EventID = c("E1", "E1", "E2"), StationID = c("S1", "S2", "S1"))
+#' selectRecords(Records, eventID = "E1")
+#' selectRecords(Records, stationID = "S1", ownerID = "AAA")
 #' @export
-selectRecords <- function(M,
-                          RecordID  = NULL,
-                          EventID   = NULL,
-                          StationID = NULL,
-                          OwnerID   = NULL) {
-  RID <- RecordID; EID <- EventID; SID <- StationID; OID <- OwnerID
-  SEL <- M
-  if (!is.null(RID)) SEL <- SEL[RecordID  %in% RID]
-  if (!is.null(EID)) SEL <- SEL[EventID   %in% EID]
-  if (!is.null(SID)) SEL <- SEL[StationID %in% SID]
-  if (!is.null(OID)) SEL <- SEL[OwnerID   %in% OID]
-  SEL <- unique(SEL[, .(RecordID, OwnerID, EventID, StationID)])
-  setorder(SEL, OwnerID, EventID, StationID)
-  SEL[]
+selectRecords <- function(data, recordID = NULL, eventID = NULL,
+                           stationID = NULL, ownerID = NULL) {
+  DT <- as.data.table(data)
+  COLS <- c("RecordID", "OwnerID", "EventID", "StationID")
+  if (anyDuplicated(names(DT)) || length(setdiff(COLS, names(DT)))) {
+    .stopUsage("Selection requires RecordID, OwnerID, EventID and StationID.", operation = "selectRecords")
+  }
+  if (!is.null(recordID)) DT <- DT[RecordID %in% recordID]
+  if (!is.null(eventID)) DT <- DT[EventID %in% eventID]
+  if (!is.null(stationID)) DT <- DT[StationID %in% stationID]
+  if (!is.null(ownerID)) DT <- DT[OwnerID %in% ownerID]
+  DT <- unique(DT[, COLS, with = FALSE])
+  setorderv(DT, c("OwnerID", "EventID", "StationID"))
+  DT[]
 }

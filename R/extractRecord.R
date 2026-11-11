@@ -1,132 +1,115 @@
-#' Extract one record to `raw/<KIND>.<RecordID>.csv` + `<KIND>.<RecordID>.json`.
+# SPDX-FileCopyrightText: 2026 Alejandro Daniel Verri <averri@fi.uba.ar>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Part of gmsp: free software under the GNU Affero General Public License, version 3 or later, see <https://www.gnu.org/licenses/>.
+# Text and data mining reserved for any use not licensed under the AGPL-3: see <https://kanameishi.github.io/tdm-policy.html>.
+#' Extract a provider record to raw files
 #'
-#' Pipeline: `parseRecord` -> `mapComponents(rotate = FALSE)` -> capture pre-align NP and
-#' `DIR`/`OCID` mapping -> `alignComponents` -> pivot WIDE by provider
-#' `OCID` -> md5-16 hash -> write. The function returns `NULL` and writes
-#' nothing in three
-#' skip paths:
-#' 1. Component classification cannot map the record (arrays with > 3
-#'    OCIDs, 2-component records, or records with no vertical channel
-#'    in the vertical-component vocabulary).
-#' 2. The provider `Units` string cannot be normalised (`.parseUnits`
-#'    returns `NA_character_`, so the scale factor `K` is `NULL`).
-#' 3. `kind` is left at its default `NULL` and `.parseKind(Key$Units)`
-#'    returns `NA_character_` (kind cannot be derived from `Units`).
+#' Reads and classifies one provider record without rotation, converts its
+#' amplitudes to a millimetre length basis and writes a CSV and JSON pair.
 #'
-#' `KIND` is one of `"AT"` (acceleration), `"VT"` (velocity), `"DT"`
-#' (displacement). By default it is derived from `Key$Units` via
-#' `.parseKind()`. Pass `kind` explicitly to override -- e.g.
-#' `kind = "VT"` for blasting records whose `Units` may not be
-#' machine-parseable.
+#' @param record Table for one owner, event and station, with FileID and Units;
+#'   NetworkID is retained in the sidecar when supplied.
+#' @param path Records root containing OwnerID/EventID/StationID/raw.owner.
+#' @param align Alignment by sample count: "max" pads with trailing zeros;
+#'   "min" truncates. Neither choice interpolates time.
+#' @param kind Quantity override AT, VT or DT; NULL derives the quantity from
+#'   Units. An override still requires recognisable Units.
+#' @return Absolute path to the written CSV, or NULL when classification or
+#'   unit interpretation cannot produce a record.
+#' @details The CSV retains provider OCID columns and omits time, and its lines
+#'   end with LF on every system. RecordID is the first 16 characters of the
+#'   MD5 digest of the CSV bytes, so it does not depend on the system. The JSON
+#'   stores DIR, OCID and pre-alignment NP arrays in H1, H2, UP order; peaks
+#'   are measured after alignment. Its dt and Fs use nine and six decimal
+#'   places, respectively, and Units is "mm".
 #'
-#' Old contents of `raw/` are unlinked before writing (idempotent).
-#'
-#' JSON sidecar schema:
-#' ```
-#' RecordID, OwnerID, EventID, StationID, NetworkID,
-#' FileID            (scalar = "<KIND>.<RID>.csv"),
-#' DIR               (array, ["H1","H2","UP"]),
-#' OCID              (array of 3, provider channels in DIR order),
-#' NP                (array of 3, pre-align NP per DIR),
-#' PGA / PGV / PGD   (array of 3, peak |s| per DIR, post-align;
-#'                    field name derived from KIND[1] -> PGA/PGV/PGD),
-#' dt, Fs, Units     (scalars).
-#' ```
-#'
-#' @param .x `data.table` subset for ONE record.
-#' @param path Absolute path to the records root. The function writes outputs
-#'   under `<path>/<OwnerID>/<EventID>/<StationID>/raw/`. Required -- no
-#'   default.
-#' @param align `"max"` (pad to longest, default) or `"min"` (truncate).
-#' @param kind Optional `"AT"|"VT"|"DT"` override. When `NULL` (default)
-#'             KIND is derived from `Key$Units` via `.parseKind()`.
-#' @return Absolute path to the written `<KIND>.<RecordID>.csv`, or `NULL` (skip).
+#' Existing raw contents are removed after classification and unit resolution,
+#' before alignment and writing. A later failure can leave partial products;
+#' extraction is not atomic. The supplied table is not modified.
 #' @examples
-#' root <- file.path(tempdir(), "gmsp-extract-example")
-#' unlink(root, recursive = TRUE)
-#' raw <- file.path(root, "ESM", "E1", "S1", "raw.owner")
-#' dir.create(raw, recursive = TRUE)
-#' writeLines(c("0 1", "0.01 2", "0.02 3"), file.path(raw, "N_acc.txt"))
-#' writeLines(c("0 2", "0.01 3", "0.02 4"), file.path(raw, "E_acc.txt"))
-#' writeLines(c("0 0", "0.01 1", "0.02 0"), file.path(raw, "Z_acc.txt"))
-#' rows <- data.table::data.table(
-#'   OwnerID = "ESM", EventID = "E1", StationID = "S1",
-#'   NetworkID = "NW", Units = "cm",
-#'   FileID = c("N_acc.txt", "E_acc.txt", "Z_acc.txt")
-#' )
-#' path <- extractRecord(rows, path = root, kind = "AT")
-#' basename(path)
-#'
-#' @importFrom data.table data.table fwrite
-#' @importFrom openssl md5
-#' @importFrom jsonlite write_json
+#' Root <- tempfile("extractRecord")
+#' Station <- file.path(Root, "NGAW", "E1", "S1", "raw.owner")
+#' dir.create(Station, recursive = TRUE)
+#' Samples <- c(HNE = "0.01 0.03 -0.02 0.01", HNN = "0.02 -0.01 0.01 0",
+#'              HNZ = "0 0.01 -0.01 0")
+#' for (Channel in names(Samples)) {
+#'   writeLines(c("header", paste0("Event, date, station, ", Channel), "units",
+#'                "NPTS= 4, DT= 0.01 SEC", Samples[[Channel]]),
+#'              file.path(Station, paste0(Channel, ".AT2")))
+#' }
+#' Record <- data.table::data.table(OwnerID = "NGAW", EventID = "E1",
+#'   StationID = "S1", FileID = paste0(names(Samples), ".AT2"), Units = "g")
+#' CSV <- extractRecord(Record, path = Root)
+#' basename(CSV)
+#' data.table::fread(CSV)
+#' Sidecar <- jsonlite::read_json(sub("[.]csv$", ".json", CSV), simplifyVector = TRUE)
+#' str(Sidecar[c("DIR", "OCID", "NP", "PGA", "dt", "Units")])
+#' unlink(Root, recursive = TRUE)
+#' @importFrom data.table fcase fread fwrite setorder set
 #' @export
-extractRecord <- function(.x, path, align = "max",
-                          kind = NULL) {
-  PATH.records <- path.expand(path)
-  Key          <- .x[1L]
-
-  DT <- parseRecord(.x = .x, path = PATH.records)
+extractRecord <- function(record, path, align = "max", kind = NULL) {
+  if (!is.null(kind) && (length(kind) != 1L || is.na(kind) ||
+                         !kind %in% c("AT", "VT", "DT"))) {
+    .stopUsage("kind must be AT, VT or DT.", operation = "extractRecord")
+  }
+  path <- normalizePath(path.expand(path), mustWork = TRUE)
+  Key <- as.data.table(record)[1L]
+  DT <- parseRecord(record = record, path = path)
   DT <- mapComponents(DT, rotate = FALSE)
   if (is.null(DT)) return(NULL)
+  Unit <- .parseUnits(Key$Units)
+  if (is.na(Unit)) return(NULL)
+  UnitFactor <- switch(Unit, mm = 1, cm = 10, m = 1000, g = 9806.650)
+  if (is.null(kind)) kind <- .parseKind(Key$Units)
+  if (is.na(kind)) return(NULL)
+  DT[, s := s * UnitFactor]
 
-  K <- switch(.parseUnits(Key$Units), mm = 1, cm = 10, m = 1000, g = 9806.650)
-  if (is.null(K)) return(NULL)
-  KIND <- if (is.null(kind)) .parseKind(Key$Units) else kind
-  if (is.na(KIND)) return(NULL)
-  DT[, s := s * K]
-
-  # All checks passed -- only now create raw/ and clear stale outputs
-  RawDir <- file.path(PATH.records, Key$OwnerID, Key$EventID, Key$StationID, "raw")
+  RawDir <- file.path(path, Key$OwnerID, Key$EventID, Key$StationID, "raw")
   dir.create(RawDir, showWarnings = FALSE, recursive = TRUE)
   unlink(list.files(RawDir, full.names = TRUE))
-
-  MAP <- DT[, .(NP = .N, OCID = OCID[1L]), by = DIR]
-  MAP <- MAP[match(c("H1", "H2", "UP"), DIR)]
-  if (anyNA(MAP$DIR) || anyNA(MAP$OCID)) return(NULL)
-
+  Map <- DT[, .(NP = .N, OCID = OCID[1L]), by = DIR]
+  Map <- Map[match(c("H1", "H2", "UP"), DIR)]
+  if (anyNA(Map$DIR) || anyNA(Map$OCID)) return(NULL)
   DT <- alignComponents(DT, align = align)$DT
-  AUX <- DT[, .N, by = .(t, OCID)]
-  if (any(AUX[["N"]] > 1L))
-    stop("extractRecord() cannot dcast: duplicate (t, OCID) rows")
-
-  dt <- round(
-    DT[OCID == MAP$OCID[1L]][2L, t] - DT[OCID == MAP$OCID[1L]][1L, t],
-    9L
-  )
-
-  PEAK       <- vapply(MAP$OCID, function(o) max(abs(DT[OCID == o, s])), numeric(1L))
-  PEAK_FIELD <- sprintf("PG%s", substr(KIND, 1L, 1L))
-
-  # CSV: wide with original OCID names as columns (e.g. L/T/V for ISEE)
-  WIDE <- dcast(DT, t ~ OCID, value.var = "s")[, -"t"]
+  if (anyDuplicated(DT, by = c("t", "OCID"))) {
+    .stopUsage("Duplicate (t, OCID) rows in ", RawDir, ".",
+               operation = "extractRecord")
+  }
+  SamplingInterval <- round(
+    DT[OCID == Map$OCID[1L]][2L, t] - DT[OCID == Map$OCID[1L]][1L, t], 9L)
+  Peak <- vapply(Map$OCID, function(x) max(abs(DT[OCID == x, s])), numeric(1L))
+  DT <- dcast(DT, t ~ OCID, value.var = "s")[, -"t"]
   FILE <- tempfile(tmpdir = RawDir, fileext = ".csv")
-  fwrite(WIDE, FILE)
-  AUX      <- file(FILE, "rb"); on.exit(try(close(AUX), silent = TRUE), add = TRUE)
-  RecordID <- substr(paste(openssl::md5(AUX)), 1L, 16L)
-  close(AUX)
-  CSV  <- sprintf("%s.%s.csv", KIND, RecordID)
-  PATH <- file.path(RawDir, CSV)
-  file.rename(FILE, PATH)
+  fwrite(DT, FILE, eol = "\n")
+  RecordID <- substr(unname(tools::md5sum(FILE)), 1L, 16L)
+  FileID <- paste0(kind, ".", RecordID, ".csv")
+  CSV <- file.path(RawDir, FileID)
+  if (!file.rename(FILE, CSV)) stop("Cannot publish raw CSV: ", CSV, call. = FALSE)
+  Metadata <- list(RecordID = RecordID, OwnerID = Key$OwnerID,
+    EventID = Key$EventID, StationID = Key$StationID,
+    FileID = FileID, DIR = Map$DIR, OCID = Map$OCID, NP = Map$NP)
+  if ("NetworkID" %chin% names(Key)) Metadata$NetworkID <- Key$NetworkID
+  Metadata[[paste0("PG", substr(kind, 1L, 1L))]] <- Peak
+  Metadata$dt <- SamplingInterval
+  Metadata$Fs <- round(1 / SamplingInterval, 6L)
+  Metadata$Units <- "mm"
+  .writeJSON(Metadata, file.path(RawDir, paste0(kind, ".", RecordID, ".json")),
+             auto_unbox = TRUE, pretty = TRUE)
+  CSV
+}
 
-  SIDECAR <- list(RecordID  = RecordID,
-                  OwnerID   = Key$OwnerID,
-                  EventID   = Key$EventID,
-                  StationID = Key$StationID,
-                  NetworkID = Key$NetworkID,
-                  FileID    = CSV,
-                  DIR       = MAP$DIR,
-                  OCID      = MAP$OCID,
-                  NP        = MAP$NP)
-  SIDECAR[[PEAK_FIELD]] <- PEAK
-  SIDECAR$dt    <- dt
-  SIDECAR$Fs    <- round(1 / dt, 6L)
-  SIDECAR$Units <- TARGET_UNITS
-  jsonlite::write_json(
-    SIDECAR,
-    file.path(RawDir, sprintf("%s.%s.json", KIND, RecordID)),
-    auto_unbox = TRUE, pretty = TRUE
-  )
+.parseUnits <- function(text) {
+  if (!length(text) || is.na(text) || !nzchar(text)) return(NA_character_)
+  AUX <- tolower(text)
+  fcase(grepl("^mm", AUX), "mm", grepl("^cm|^gal", AUX), "cm",
+        AUX == "m" | grepl("^m/", AUX), "m", grepl("^g('s)?$|^g/", AUX), "g",
+        default = NA_character_)
+}
 
-  PATH
+.parseKind <- function(text) {
+  if (!length(text) || is.na(text) || !nzchar(text)) return(NA_character_)
+  AUX <- tolower(text)
+  fcase(grepl("/s2$|/sec2$|/s/s$|/sec/sec$", AUX), "AT",
+        grepl("^g('s)?$|^gal", AUX), "AT", grepl("/s$|/sec$", AUX), "VT",
+        grepl("^(mm|cm|m)$", AUX), "DT", default = NA_character_)
 }

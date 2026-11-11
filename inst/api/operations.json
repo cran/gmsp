@@ -1,0 +1,1251 @@
+{
+  "schema": 1,
+  "tableSchemas": {
+    "record": {
+      "character": ["ProcessID", "RecordID", "OwnerID", "EventID", "StationID", "FileID", "NetworkID", "Units"]
+    },
+    "signal": {
+      "character": ["OCID", "ID"],
+      "numeric": ["t", "s"]
+    },
+    "signalWide": {
+      "numeric": ["t", "ts"],
+      "numericPattern": "^(AT|VT|DT)\\."
+    },
+    "intensity": {
+      "character": ["OCID", "ID", "IM", "units"],
+      "numeric": "value"
+    },
+    "spectra": {
+      "character": ["OCID", "ID"],
+      "numeric": ["Tn", "S", "xi"]
+    },
+    "spectraWide": {
+      "numeric": ["Tn", "xi"],
+      "numericPattern": "^(PSA|PSV|SD)\\."
+    },
+    "modalWide": {
+      "character": "OCID",
+      "numeric": ["t", "signal", "residue"],
+      "numericPattern": "^IMF[0-9]+$"
+    },
+    "target": {
+      "numeric": ["Tn", "Sa", "Sa.low", "Sa.mean", "Sa.high"]
+    },
+    "suite": {
+      "character": "kind",
+      "numeric": ["Tn", "Sa"]
+    },
+    "scale": {
+      "numeric": "scaleFactor"
+    },
+    "provider": {
+      "character": ["OCID", "ID", "DIR", "Units"],
+      "numeric": ["t", "s", "ts", "theta", "dip", "dt"]
+    },
+    "distances": {
+      "numeric": ["EventLatitude", "EventLongitude", "EventDepth", "StationLatitude", "StationLongitude", "StationElevation", "Repi", "Rhyp"]
+    },
+    "site": {
+      "numeric": "StationVs30"
+    },
+    "decomposition": {
+      "character": ["OCID", "ID"],
+      "numeric": ["t", "s", "frequency", "energy", "energyFraction"],
+      "integer": ["mode", "boundary"]
+    }
+  },
+  "operations": [
+    {
+      "name": "accumulateIntensityTSL",
+      "function": "accumulateIntensityTSL",
+      "arguments": [
+        {
+          "name": "TSL",
+          "type": "table",
+          "required": true,
+          "schema": "signal"
+        },
+        {
+          "name": "by",
+          "type": "characterVector",
+          "required": true
+        },
+        {
+          "name": "ID",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "unitsSource",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "unitsTarget",
+          "type": "character",
+          "required": true
+        }
+      ],
+      "result": "A new data.table with columns by,OCID,ID,t,s, ordered by metadata, component and time. ID contains the requested quantity and s contains dimensionless ratios. A zero or nonfinite cumulative maximum produces NA_real_ throughout that history, including arithmetic overflow from finite samples.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "accumulateIntensityTSL"
+    },
+    {
+      "name": "alignComponents",
+      "function": "alignComponents",
+      "arguments": [
+        {
+          "name": "data",
+          "type": "table",
+          "required": true,
+          "schema": "provider"
+        },
+        {
+          "name": "align",
+          "type": "character",
+          "required": false,
+          "default": "\"max\""
+        }
+      ],
+      "result": "A list with DT, the aligned table, and NP, the final sample count per component. The input table remains unchanged.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "alignComponents"
+    },
+    {
+      "name": "archiveRawOwner",
+      "function": "archiveRawOwner",
+      "arguments": [
+        {
+          "name": "path",
+          "type": "character",
+          "required": true
+        }
+      ],
+      "result": "An invisible logical value: TRUE after archiving, FALSE when the source directory is absent or the destination exists, and NA for a treated archive creation or listing failure.",
+      "effects": ["read", "write", "remove"],
+      "interfaces": ["R", "CLI"],
+      "documentation": "archiveRawOwner"
+    },
+    {
+      "name": "assessCompatibility",
+      "function": "assessCompatibility",
+      "arguments": [
+        {
+          "name": "PSW",
+          "type": "table",
+          "required": true,
+          "schema": "spectraWide"
+        },
+        {
+          "name": "target",
+          "type": "table",
+          "required": true,
+          "schema": "target"
+        },
+        {
+          "name": "scale",
+          "type": "table",
+          "required": true,
+          "schema": "scale"
+        },
+        {
+          "name": "OCID",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "factorMin",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "factorMax",
+          "type": "numeric",
+          "required": true,
+          "infinity": true
+        }
+      ],
+      "result": "A list of data.tables: record contains record keys, nTn, PGA values and target ratios, relative PSA RMSE, band containment and violations, scaleFactor, scaleAtMin, scaleAtMax and PGA status, ordered by decreasing PGA.final. summary contains record counts by PGA status and factor bounds, and median or extreme values of record RMSE, containment and violation.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "assessCompatibility"
+    },
+    {
+      "name": "assessDistances",
+      "function": "assessDistances",
+      "arguments": [
+        {
+          "name": "data",
+          "type": "table",
+          "required": true,
+          "schema": "distances"
+        },
+        {
+          "name": "repiOutlier",
+          "type": "numeric",
+          "required": true
+        }
+      ],
+      "result": "A data.table containing flagged rows in input order, with Reason.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "assessDistances"
+    },
+    {
+      "name": "assessParsers",
+      "function": "assessParsers",
+      "arguments": [
+        {
+          "name": "records",
+          "type": "table",
+          "required": true,
+          "schema": "record"
+        },
+        {
+          "name": "owner",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "path",
+          "type": "character",
+          "required": true
+        }
+      ],
+      "result": "A data.table with OwnerID, EventID, StationID, status and reason, in first-appearance station order. An owner without rows returns an empty table with these columns.",
+      "effects": "read",
+      "interfaces": ["R", "CLI"],
+      "documentation": "assessParsers"
+    },
+    {
+      "name": "assessSite",
+      "function": "assessSite",
+      "arguments": [
+        {
+          "name": "data",
+          "type": "table",
+          "required": true,
+          "schema": "site"
+        },
+        {
+          "name": "vs30Low",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "vs30High",
+          "type": "numeric",
+          "required": true
+        }
+      ],
+      "result": "A data.table containing flagged rows in input order, with Reason.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "assessSite"
+    },
+    {
+      "name": "buildRawFileTable",
+      "function": "buildRawFileTable",
+      "arguments": [
+        {
+          "name": "pathRecords",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "pathIndex",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "owners",
+          "type": "characterVector",
+          "required": false,
+          "default": "NULL"
+        }
+      ],
+      "result": "An invisible named list of row counts for the owners written.",
+      "effects": ["read", "write"],
+      "interfaces": ["R", "CLI"],
+      "documentation": "buildRawFileTable"
+    },
+    {
+      "name": "buildRawIntensityTable",
+      "function": "buildRawIntensityTable",
+      "arguments": [
+        {
+          "name": "pathRecords",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "pathIndex",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "owners",
+          "type": "characterVector",
+          "required": false,
+          "default": "NULL"
+        },
+        {
+          "name": "incremental",
+          "type": "logical",
+          "required": false,
+          "default": "TRUE"
+        },
+        {
+          "name": "force",
+          "type": "logical",
+          "required": false,
+          "default": "FALSE"
+        }
+      ],
+      "result": "An invisible named list of row counts for the owners written.",
+      "effects": ["read", "write"],
+      "interfaces": ["R", "CLI"],
+      "documentation": "buildRawIntensityTable"
+    },
+    {
+      "name": "buildRawRecordTable",
+      "function": "buildRawRecordTable",
+      "arguments": [
+        {
+          "name": "pathRecords",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "pathIndex",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "owners",
+          "type": "characterVector",
+          "required": false,
+          "default": "NULL"
+        }
+      ],
+      "result": "An invisible named list of row counts for the owners written.",
+      "effects": ["read", "write"],
+      "interfaces": ["R", "CLI"],
+      "documentation": "buildRawRecordTable"
+    },
+    {
+      "name": "buildTSL",
+      "function": "buildTSL",
+      "arguments": [
+        {
+          "name": "TSL",
+          "type": "table",
+          "required": true,
+          "schema": "signal"
+        },
+        {
+          "name": "by",
+          "type": "characterVector",
+          "required": true
+        },
+        {
+          "name": "unitsSource",
+          "type": "character",
+          "required": false,
+          "requiredWhen": {
+            "any": [
+              {
+                "argument": "isRaw",
+                "value": true,
+                "default": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "unitsTarget",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "fmax",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "windowLength",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "overlap",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "astop0",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "apass0",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "astopLP",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "apassLP",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "kNyq",
+          "type": "numeric",
+          "required": false,
+          "default": "NULL"
+        },
+        {
+          "name": "isRaw",
+          "type": "logical",
+          "required": false,
+          "default": "TRUE"
+        },
+        {
+          "name": "flatZeros",
+          "type": "logical",
+          "required": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "trimZeros",
+          "type": "logical",
+          "required": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "removeMean",
+          "type": "logical",
+          "required": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "forceRegularization",
+          "type": "logical",
+          "required": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "includeWarnings",
+          "type": "logical",
+          "required": false,
+          "default": "TRUE"
+        },
+        {
+          "name": "derivate",
+          "type": "character",
+          "required": false,
+          "default": "\"freq\""
+        },
+        {
+          "name": "lowPass",
+          "type": "logical",
+          "required": false,
+          "default": "TRUE"
+        }
+      ],
+      "result": "A new data.table with columns by,OCID,ID,t,s, ordered by record, channel, quantity (AT, VT, DT), and time. The common grid starts at zero for each record. Amplitudes use unitsTarget/s^2, unitsTarget/s, and unitsTarget, respectively. The input is unchanged.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "buildTSL"
+    },
+    {
+      "name": "computeSpectraTSL",
+      "function": "computeSpectraTSL",
+      "arguments": [
+        {
+          "name": "TSL",
+          "type": "table",
+          "required": true,
+          "schema": "signal"
+        },
+        {
+          "name": "by",
+          "type": "characterVector",
+          "required": true
+        },
+        {
+          "name": "xi",
+          "type": "numericVector",
+          "required": true
+        },
+        {
+          "name": "Tn",
+          "type": "numericVector",
+          "required": true
+        },
+        {
+          "name": "includeD50",
+          "type": "logical",
+          "required": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "includeD100",
+          "type": "logical",
+          "required": false,
+          "default": "FALSE"
+        },
+        {
+          "name": "nTheta",
+          "type": "numeric",
+          "required": false,
+          "requiredWhen": {
+            "any": [
+              {
+                "argument": "includeD50",
+                "value": true,
+                "default": false
+              },
+              {
+                "argument": "includeD100",
+                "value": true,
+                "default": false
+              }
+            ]
+          }
+        }
+      ],
+      "result": "A new data.table with by,OCID,Tn,ID,S, ordered by metadata, component, spectral ID and period. Vector xi adds an xi column after the metadata and preserves the requested damping order within each record. Repeated periods and damping ratios remain repeated.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "computeSpectraTSL"
+    },
+    {
+      "name": "decomposeRecords",
+      "function": "decomposeRecords",
+      "arguments": [
+        {
+          "name": "TSL",
+          "type": "table",
+          "required": true,
+          "schema": "signal"
+        },
+        {
+          "name": "method",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "control",
+          "type": "object",
+          "required": true,
+          "infinityPaths": ["maxModes", "sifting.maxModes"]
+        },
+        {
+          "name": "by",
+          "type": "characterVector",
+          "required": true
+        }
+      ],
+      "result": "A named list of data.tables with signal and modes and the fields residue, fitResidual, meanNoise, diagnostics, termination, centers, maskFrequencies or boundaries returned by the method. signal contains the effective input. Mode indices and optional fields retain their native meaning.",
+      "effects": "random for stochastic methods",
+      "interfaces": ["R", "CLI"],
+      "documentation": "decomposeRecords"
+    },
+    {
+      "name": "describeModule",
+      "function": "describeModule",
+      "arguments": [],
+      "result": "A list containing package and version.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "describeModule"
+    },
+    {
+      "name": "exportProject",
+      "function": "exportProject",
+      "arguments": [
+        {
+          "name": "file",
+          "type": "character",
+          "required": false,
+          "default": "file.path(\"gmsp\", \"export.json\")"
+        },
+        {
+          "name": "root",
+          "type": "character",
+          "required": false,
+          "default": "getwd()"
+        }
+      ],
+      "result": "Invisible integer zero on completion; usage, execution or partial publication failures signal conditions.",
+      "effects": ["read", "write"],
+      "interfaces": ["R", "CLI"],
+      "documentation": "exportProject",
+      "project": {
+        "verb": "export",
+        "file": "gmsp/export.json"
+      }
+    },
+    {
+      "name": "extractRecord",
+      "function": "extractRecord",
+      "arguments": [
+        {
+          "name": "record",
+          "type": "table",
+          "required": true,
+          "schema": "record"
+        },
+        {
+          "name": "path",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "align",
+          "type": "character",
+          "required": false,
+          "default": "\"max\""
+        },
+        {
+          "name": "kind",
+          "type": "character",
+          "required": false,
+          "default": "NULL"
+        }
+      ],
+      "result": "Absolute path to the written CSV, or NULL when classification or unit interpretation cannot produce a record.",
+      "effects": ["read", "write", "remove"],
+      "interfaces": ["R", "CLI"],
+      "documentation": "extractRecord"
+    },
+    {
+      "name": "fitModalFactor",
+      "function": "fitModalFactor",
+      "arguments": [
+        {
+          "name": "IMF",
+          "type": "table",
+          "required": true,
+          "schema": "modalWide"
+        },
+        {
+          "name": "target",
+          "type": "table",
+          "required": true,
+          "schema": "target"
+        },
+        {
+          "name": "source",
+          "type": "table",
+          "required": true,
+          "schema": "signalWide"
+        },
+        {
+          "name": "key",
+          "type": "table",
+          "required": true,
+          "schema": "record"
+        },
+        {
+          "name": "OCID",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "xi",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "fmax",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "kNyq",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "signalControl",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "factorMin",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "factorMax",
+          "type": "numeric",
+          "required": true,
+          "infinity": true
+        },
+        {
+          "name": "criterion",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "unitsSource",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "unitsTarget",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "includeResidue",
+          "type": "logical",
+          "required": false,
+          "default": "TRUE"
+        }
+      ],
+      "result": "A list with TSW and PSW for the fitted component; PSA with RecordID, kind (source/start/final), Tn and Sa; coeff with the record keys, IMF, b0, b, ratio, energyFactor and stageFactor; metrics with optimizer status and fit diagnostics; and eval in objective-call order. Time histories and spectra are ordered by record and time or period; coefficients follow the retained modal order, then the residue. Its row has b0, b and ratio equal to one, and stageFactor equal to energyFactor.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "fitModalFactor"
+    },
+    {
+      "name": "fitRecordFactor",
+      "function": "fitRecordFactor",
+      "arguments": [
+        {
+          "name": "PSA",
+          "type": "table",
+          "required": true,
+          "schema": "suite"
+        },
+        {
+          "name": "target",
+          "type": "table",
+          "required": true,
+          "schema": "target"
+        },
+        {
+          "name": "records",
+          "type": "characterVector",
+          "required": true
+        },
+        {
+          "name": "factorMin",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "factorMax",
+          "type": "numeric",
+          "required": true,
+          "infinity": true
+        },
+        {
+          "name": "bandWeight",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "deficitWeight",
+          "type": "numeric",
+          "required": true
+        }
+      ],
+      "result": "A list with scale and stage data.tables. scale contains RecordID and scaleFactor in the requested record order after alignment. stage contains one row labelled B, the osqp method and solver status, objective weights, relative RMSE, PGA ratio, band violation and scale statistics, and matrix diagnostics equations, records, rankSVD, cond2 and rcond.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "fitRecordFactor"
+    },
+    {
+      "name": "lengthenPSW",
+      "function": "lengthenPSW",
+      "arguments": [
+        {
+          "name": "PSW",
+          "type": "table",
+          "required": true,
+          "schema": "spectraWide"
+        },
+        {
+          "name": "by",
+          "type": "characterVector",
+          "required": true
+        },
+        {
+          "name": "ids",
+          "type": "characterVector",
+          "required": false,
+          "default": "c(\"PSA\", \"PSV\", \"SD\")"
+        }
+      ],
+      "result": "A new data.table with by,OCID,Tn,ID,S, ordered by metadata, component, preferred ID and period. NA values remain explicit rows.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "lengthenPSW"
+    },
+    {
+      "name": "lengthenTSW",
+      "function": "lengthenTSW",
+      "arguments": [
+        {
+          "name": "TSW",
+          "type": "table",
+          "required": true,
+          "schema": "signalWide"
+        },
+        {
+          "name": "by",
+          "type": "characterVector",
+          "required": true
+        },
+        {
+          "name": "ids",
+          "type": "characterVector",
+          "required": false,
+          "default": "c(\"AT\", \"VT\", \"DT\")"
+        }
+      ],
+      "result": "A new data.table with columns by,OCID,ID,t,s, ordered by metadata, component, preferred quantity and time. NA values remain NA. Metadata and amplitudes retain their supplied units.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "lengthenTSW"
+    },
+    {
+      "name": "mapComponents",
+      "function": "mapComponents",
+      "arguments": [
+        {
+          "name": "data",
+          "type": "table",
+          "required": true,
+          "schema": "provider"
+        },
+        {
+          "name": "rotate",
+          "type": "logical",
+          "required": true
+        },
+        {
+          "name": "output",
+          "type": "character",
+          "required": false,
+          "default": "\"long\""
+        }
+      ],
+      "result": "A long data.table with t, OCID, DIR, s, or a wide data.table with t, H1, H2, UP. Both carry componentMap and rotate attributes; rotated results also carry theta in radians. Returns NULL when the record cannot be classified or rotated.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "mapComponents"
+    },
+    {
+      "name": "matchProject",
+      "function": "matchProject",
+      "arguments": [
+        {
+          "name": "file",
+          "type": "character",
+          "required": false,
+          "default": "file.path(\"gmsp\", \"match.json\")"
+        },
+        {
+          "name": "root",
+          "type": "character",
+          "required": false,
+          "default": "getwd()"
+        }
+      ],
+      "result": "Invisible integer zero after publication of data, metadata and match products under path.out.",
+      "effects": ["read", "write", "remove"],
+      "interfaces": ["R", "CLI"],
+      "documentation": "matchProject",
+      "project": {
+        "verb": "match",
+        "file": "gmsp/match.json"
+      }
+    },
+    {
+      "name": "measureIntensitiesTSL",
+      "function": "measureIntensitiesTSL",
+      "arguments": [
+        {
+          "name": "TSL",
+          "type": "table",
+          "required": true,
+          "schema": "signal"
+        },
+        {
+          "name": "by",
+          "type": "characterVector",
+          "required": true
+        },
+        {
+          "name": "unitsSource",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "unitsTarget",
+          "type": "character",
+          "required": true
+        }
+      ],
+      "result": "A new data.table with columns by,OCID,ID,IM,value,units. Rows follow quantity order AT, VT, DT and the measure order below; record/component groups retain their first-occurrence order within each measure. Dimensional values use unitsTarget; the units column identifies the units of each measure.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "measureIntensitiesTSL"
+    },
+    {
+      "name": "normalizeTSL",
+      "function": "normalizeTSL",
+      "arguments": [
+        {
+          "name": "TSL",
+          "type": "table",
+          "required": true,
+          "schema": "signal"
+        },
+        {
+          "name": "by",
+          "type": "characterVector",
+          "required": true
+        },
+        {
+          "name": "reference",
+          "type": "character",
+          "required": true
+        }
+      ],
+      "result": "A new data.table with the same columns and rows, whose s values are divided by the reference peak in each by,OCID group. No metadata unit is reinterpreted. Other quantities use the same factor; their own peaks need not equal one.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "normalizeTSL"
+    },
+    {
+      "name": "parseRecord",
+      "function": "parseRecord",
+      "arguments": [
+        {
+          "name": "record",
+          "type": "table",
+          "required": true,
+          "schema": "record"
+        },
+        {
+          "name": "path",
+          "type": "character",
+          "required": true
+        }
+      ],
+      "result": "A long data.table with t, OCID, s in native units.",
+      "effects": "read",
+      "interfaces": ["R", "CLI"],
+      "documentation": "parseRecord"
+    },
+    {
+      "name": "processProject",
+      "function": "processProject",
+      "arguments": [
+        {
+          "name": "file",
+          "type": "character",
+          "required": false,
+          "default": "file.path(\"gmsp\", \"process.json\")"
+        },
+        {
+          "name": "root",
+          "type": "character",
+          "required": false,
+          "default": "getwd()"
+        }
+      ],
+      "result": "Invisible integer 0 after complete publication.",
+      "effects": ["read", "write", "random for stochastic imf"],
+      "interfaces": ["R", "CLI"],
+      "documentation": "processProject",
+      "project": {
+        "verb": "process",
+        "file": "gmsp/process.json"
+      }
+    },
+    {
+      "name": "rankProject",
+      "function": "rankProject",
+      "arguments": [
+        {
+          "name": "file",
+          "type": "character",
+          "required": false,
+          "default": "file.path(\"gmsp\", \"match.json\")"
+        },
+        {
+          "name": "root",
+          "type": "character",
+          "required": false,
+          "default": "getwd()"
+        }
+      ],
+      "result": "Invisible integer zero after publication of stage0.psa.csv, stage0.identity.json, stage0.spectral.csv and the file at path.selection.",
+      "effects": ["read", "write"],
+      "interfaces": ["R", "CLI"],
+      "documentation": "rankProject",
+      "project": {
+        "verb": "rank",
+        "file": "gmsp/match.json"
+      }
+    },
+    {
+      "name": "readProviderFile",
+      "function": "readProviderFile",
+      "arguments": [
+        {
+          "name": "file",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "format",
+          "type": "character",
+          "required": true
+        }
+      ],
+      "result": "A data.table with columns t, OCID, s. An NPTS block with insufficient samples or NA within its declared samples returns NULL; multi-block readers omit such blocks. ISEE returns T, V and L velocities in mm/s.",
+      "effects": "read",
+      "interfaces": ["R", "CLI"],
+      "documentation": "readProviderFile"
+    },
+    {
+      "name": "readRecordTSL",
+      "function": "readRecordTSL",
+      "arguments": [
+        {
+          "name": "records",
+          "type": "table",
+          "required": true,
+          "schema": "record"
+        },
+        {
+          "name": "path",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "ID",
+          "type": "character",
+          "required": true
+        }
+      ],
+      "result": "A new data.table with columns RecordID, OwnerID, EventID, StationID, OCID, ID, t and s, ordered by those keys and t. OCID retains the provider channel names. Time t is in seconds.",
+      "effects": "read",
+      "interfaces": ["R", "CLI"],
+      "documentation": "readRecordTSL"
+    },
+    {
+      "name": "reconstructRecords",
+      "function": "reconstructRecords",
+      "arguments": [
+        {
+          "name": "decomposition",
+          "type": "tableList",
+          "required": true,
+          "schema": "decomposition"
+        },
+        {
+          "name": "criterion",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "by",
+          "type": "characterVector",
+          "required": true
+        },
+        {
+          "name": "signalControl",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "includeResidue",
+          "type": "logical",
+          "required": false,
+          "default": "TRUE"
+        }
+      ],
+      "result": "A list with TSL, the reintegrated AT/VT/DT table; metrics, the freshly measured native mode metrics; and selection, the native decision table for that decomposition.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "reconstructRecords"
+    },
+    {
+      "name": "selectProject",
+      "function": "selectProject",
+      "arguments": [
+        {
+          "name": "file",
+          "type": "character",
+          "required": false,
+          "default": "file.path(\"gmsp\", \"select.json\")"
+        },
+        {
+          "name": "root",
+          "type": "character",
+          "required": false,
+          "default": "getwd()"
+        }
+      ],
+      "result": "Invisible integer zero after publication of selection.csv, candidates.csv, selection.json and summary.json under path.selection.",
+      "effects": ["read", "write", "remove"],
+      "interfaces": ["R", "CLI"],
+      "documentation": "selectProject",
+      "project": {
+        "verb": "select",
+        "file": "gmsp/select.json"
+      }
+    },
+    {
+      "name": "selectRecords",
+      "function": "selectRecords",
+      "arguments": [
+        {
+          "name": "data",
+          "type": "table",
+          "required": true,
+          "schema": "record"
+        },
+        {
+          "name": "recordID",
+          "type": "characterVector",
+          "required": false,
+          "default": "NULL"
+        },
+        {
+          "name": "eventID",
+          "type": "characterVector",
+          "required": false,
+          "default": "NULL"
+        },
+        {
+          "name": "stationID",
+          "type": "characterVector",
+          "required": false,
+          "default": "NULL"
+        },
+        {
+          "name": "ownerID",
+          "type": "characterVector",
+          "required": false,
+          "default": "NULL"
+        }
+      ],
+      "result": "A data.table with RecordID, OwnerID, EventID and StationID, in that column order, sorted by OwnerID, EventID and StationID.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "selectRecords"
+    },
+    {
+      "name": "widenIML",
+      "function": "widenIML",
+      "arguments": [
+        {
+          "name": "IML",
+          "type": "table",
+          "required": true,
+          "schema": "intensity"
+        },
+        {
+          "name": "by",
+          "type": "characterVector",
+          "required": true
+        }
+      ],
+      "result": "A new data.table with columns by,OCID,<IM>, ordered by metadata and component. Measure columns follow their first occurrence in IML; missing combinations and supplied NA values remain missing. The tabular attribute measureMetadata retains by,OCID,IM and the available ID,units fields. A correctly shaped empty input returns the row-key columns with zero rows and no measure columns.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "widenIML"
+    },
+    {
+      "name": "widenPSL",
+      "function": "widenPSL",
+      "arguments": [
+        {
+          "name": "PSL",
+          "type": "table",
+          "required": true,
+          "schema": "spectra"
+        },
+        {
+          "name": "by",
+          "type": "characterVector",
+          "required": true
+        }
+      ],
+      "result": "A new data.table ordered by by,Tn. These key columns precede the spectra columns, ordered by component with H1, H2, UP, D50 and D100 first, and by ID with PSA, PSV and SD first within each component. Other components and IDs remain after the preferred values.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "widenPSL"
+    },
+    {
+      "name": "widenTSL",
+      "function": "widenTSL",
+      "arguments": [
+        {
+          "name": "TSL",
+          "type": "table",
+          "required": true,
+          "schema": "signal"
+        },
+        {
+          "name": "by",
+          "type": "characterVector",
+          "required": true
+        },
+        {
+          "name": "ids",
+          "type": "characterVector",
+          "required": false,
+          "default": "c(\"AT\", \"VT\", \"DT\")"
+        }
+      ],
+      "result": "A new data.table ordered by by,t, with those columns first and one column per quantity/component. Missing combinations become NA. Values and unit-bearing metadata selected in by are preserved.",
+      "effects": [],
+      "interfaces": ["R", "CLI"],
+      "documentation": "widenTSL"
+    },
+    {
+      "name": "writeSelection",
+      "function": "writeSelection",
+      "arguments": [
+        {
+          "name": "data",
+          "type": "table",
+          "required": true,
+          "schema": "record"
+        },
+        {
+          "name": "name",
+          "type": "character",
+          "required": true
+        },
+        {
+          "name": "path",
+          "type": "character",
+          "required": true
+        }
+      ],
+      "result": "Invisibly, a data.table with OwnerID, EventID and StationID, sorted by these keys and without duplicate rows.",
+      "effects": "write",
+      "interfaces": ["R", "CLI"],
+      "documentation": "writeSelection"
+    }
+  ]
+}

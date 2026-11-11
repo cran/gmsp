@@ -1,166 +1,108 @@
-#' Build the per-owner RawFileTable CSV (provider file inventory, post-archive safe).
+# SPDX-FileCopyrightText: 2026 Alejandro Daniel Verri <averri@fi.uba.ar>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Part of gmsp: free software under the GNU Affero General Public License, version 3 or later, see <https://www.gnu.org/licenses/>.
+# Text and data mining reserved for any use not licensed under the AGPL-3: see <https://kanameishi.github.io/tdm-policy.html>.
+#' Build provider file indexes
 #'
-#' For each station, reads `raw.owner/record.json` and emits one row
-#' per provider file (one per ComponentID x FileID). Handles both states:
-#'   - `raw.owner/record.json` present on disk (not yet archived).
-#'   - `raw.owner.tar.gz` archive (extracts record.json via streaming
-#'     `tar -xzOf` to avoid touching disk).
+#' Reads record.json from each station's raw.owner directory or its
+#' raw.owner.tar.gz archive and writes one RawFileTable CSV per owner.
 #'
-#' Schema:
-#' ```
-#' OwnerID, EventID, StationID, ComponentID, FileID,
-#'   NP, dt, Fs, Units, HP, LP, isArray
-#' ```
-#' `PGA` is intentionally not emitted here. Pre-parse PGAs from
-#' `record.json` are in heterogeneous provider units; canonical
-#' post-parse PGAs (in mm/s^2) live in `RawIntensityTable.<Owner>.csv`.
-#' Missing provider fields in the canonical schema are emitted as typed
-#' `NA` columns instead of changing the output schema.
+#' @param pathRecords Records root containing owner, event and station folders.
+#' @param pathIndex Existing destination folder for `RawFileTable.<OwnerID>.csv`.
+#' @param owners Owner identifiers; NULL scans immediate directories of
+#'   pathRecords.
+#' @return An invisible named list of row counts for the owners written.
+#' @details Columns are OwnerID, EventID, StationID, ComponentID, FileID, NP,
+#'   dt, Fs, Units, HP, LP and isArray, ordered by event, station and component.
+#'   Missing metadata become typed NA and extra fields are dropped. isArray
+#'   indicates more than three component rows in the provider metadata.
 #'
-#' `isArray = nComponentID > 3` (heuristic per legacy convention).
-#'
-#' @param path.records Absolute path to the records root. Required -- no default.
-#' @param path.index Absolute path to the index root where per-owner CSVs are
-#'   written. Required -- no default.
-#' @param owners     Character vector of `OwnerID`s. `NULL` = scan all.
-#' @return Invisibly, the per-owner row counts.
+#' A station failure retains its cause and path. Valid rows are published;
+#' an error of class modulePartialPublication then carries failures, the
+#' partial result and destination path. Counts are not returned as complete
+#' after such a failure. Archive metadata are read without extracting files.
 #' @examples
-#' root <- file.path(tempdir(), "gmsp-raw-file-example")
-#' index <- file.path(tempdir(), "gmsp-raw-file-index")
-#' unlink(c(root, index), recursive = TRUE)
-#' dir.create(file.path(root, "AAA", "E1", "S1", "raw.owner"),
-#'            recursive = TRUE)
-#' dir.create(index)
-#' record <- list(
-#'   Event = list(EventID = "E1"),
-#'   Station = list(StationID = "S1"),
-#'   Record = list(
-#'     list(ComponentID = "H1", FileID = "H1.txt", NP = 4, dt = 0.01,
-#'          Fs = 100, Units = "cm", HP = NA, LP = NA),
-#'     list(ComponentID = "H2", FileID = "H2.txt", NP = 4, dt = 0.01,
-#'          Fs = 100, Units = "cm", HP = NA, LP = NA),
-#'     list(ComponentID = "UP", FileID = "UP.txt", NP = 4, dt = 0.01,
-#'          Fs = 100, Units = "cm", HP = NA, LP = NA)
-#'   )
-#' )
-#' jsonlite::write_json(
-#'   record,
-#'   file.path(root, "AAA", "E1", "S1", "raw.owner", "record.json"),
-#'   auto_unbox = TRUE
-#' )
-#' suppressMessages(buildRawFileTable(root, index, owners = "AAA"))
-#' data.table::fread(file.path(index, "RawFileTable.AAA.csv"))
-#'
-#' @importFrom data.table data.table rbindlist fwrite setorder setcolorder
-#' @importFrom jsonlite read_json fromJSON
+#' Root <- tempfile("buildRawFileTable")
+#' Station <- file.path(Root, "records", "NGAW", "E1", "S1", "raw.owner")
+#' Index <- file.path(Root, "index")
+#' dir.create(Station, recursive = TRUE)
+#' dir.create(Index)
+#' Metadata <- list(Event = list(EventID = "E1"), Station = list(StationID = "S1"),
+#'   Record = data.frame(ComponentID = c("HNE", "HNN", "HNZ"),
+#'                       FileID = c("HNE.AT2", "HNN.AT2", "HNZ.AT2"),
+#'                       NP = 4L, dt = 0.01, Fs = 100, Units = "g"))
+#' jsonlite::write_json(Metadata, file.path(Station, "record.json"), auto_unbox = TRUE)
+#' Counts <- buildRawFileTable(file.path(Root, "records"), pathIndex = Index)
+#' str(Counts)
+#' data.table::fread(file.path(Index, "RawFileTable.NGAW.csv"))
+#' unlink(Root, recursive = TRUE)
 #' @export
-buildRawFileTable <- function(path.records, path.index, owners = NULL) {
-  path.records <- path.expand(path.records)
-  path.index   <- path.expand(path.index)
-  if (is.null(owners))
-    owners <- basename(list.dirs(path.records, recursive = FALSE))
-
+buildRawFileTable <- function(pathRecords, pathIndex, owners = NULL) {
+  pathRecords <- path.expand(pathRecords)
+  pathIndex <- path.expand(pathIndex)
+  if (is.null(owners)) owners <- basename(list.dirs(pathRecords, recursive = FALSE))
   OUT <- list()
-  for (O in owners) {
-    EVS <- list.dirs(file.path(path.records, O), recursive = FALSE)
-    if (length(EVS) == 0L) next
-    STA <- unlist(lapply(EVS, list.dirs, recursive = FALSE))
-    if (length(STA) == 0L) next
-
-    T0   <- Sys.time()
-    FAIL <- 0L
-    LIST <- lapply(STA, function(SD) {
+  Failures <- list()
+  for (Owner in owners) {
+    DIR <- list.dirs(file.path(pathRecords, Owner), recursive = FALSE)
+    DIR <- unlist(lapply(DIR, list.dirs, recursive = FALSE), use.names = FALSE)
+    LIST <- lapply(DIR, function(path) {
       tryCatch({
-        F_PLAIN <- file.path(SD, "raw.owner", "record.json")
-        F_TGZ   <- file.path(SD, "raw.owner.tar.gz")
-        J <- if (file.exists(F_PLAIN)) {
-          jsonlite::read_json(F_PLAIN, simplifyVector = TRUE)
-        } else if (file.exists(F_TGZ)) {
-          txt <- system2("tar",
-                         args = c("-xzOf", shQuote(F_TGZ), "raw.owner/record.json"),
-                         stdout = TRUE, stderr = FALSE)
-          jsonlite::fromJSON(paste(txt, collapse = "\n"), simplifyVector = TRUE)
-        } else NULL
-        if (is.null(J) || is.null(J$Record) || length(J$Record) == 0L) return(NULL)
-        R <- as.data.table(J$Record)
-        n <- nrow(R)
-        R[, OwnerID   := O]
-        R[, EventID   := if (!is.null(J$Event$EventID))     J$Event$EventID     else NA_character_]
-        R[, StationID := if (!is.null(J$Station$StationID)) J$Station$StationID else NA_character_]
-        R[, isArray   := n > 3L]
-        .canonicalRawFileTable(R)
-      }, error = function(e) { FAIL <<- FAIL + 1L; NULL })
+        FILE <- file.path(path, "raw.owner", "record.json")
+        TAR <- file.path(path, "raw.owner.tar.gz")
+        Metadata <- NULL
+        if (file.exists(FILE)) Metadata <- jsonlite::read_json(FILE, simplifyVector = TRUE)
+        if (!file.exists(FILE) && file.exists(TAR)) {
+          AUX <- system2("tar", args = c("-xzOf", shQuote(TAR), "raw.owner/record.json"),
+                          stdout = TRUE, stderr = TRUE)
+          if (!is.null(attr(AUX, "status")) && attr(AUX, "status") != 0L) {
+            stop("Cannot read archived metadata: ", paste(AUX, collapse = "\n"), call. = FALSE)
+          }
+          Metadata <- jsonlite::fromJSON(paste(AUX, collapse = "\n"), simplifyVector = TRUE)
+        }
+        if (is.null(Metadata) || !length(Metadata$Record)) return(NULL)
+        DT <- as.data.table(Metadata$Record)
+        DT[, `:=`(OwnerID = Owner,
+          EventID = if (is.null(Metadata$Event$EventID)) NA_character_ else Metadata$Event$EventID,
+          StationID = if (is.null(Metadata$Station$StationID)) NA_character_ else Metadata$Station$StationID,
+          isArray = .N > 3L)]
+        .canonicalRawFileTable(DT)
+      }, error = function(e) {
+        Failures[[path]] <<- list(operation = "buildRawFileTable", unit = basename(path),
+                                  path = path, cause = e)
+        NULL
+      })
     })
-    LIST <- LIST[!vapply(LIST, is.null, logical(1L))]
+    LIST <- Filter(Negate(is.null), LIST)
     if (!length(LIST)) next
-    .assertRawFileSchema(LIST)
     DT <- rbindlist(LIST, use.names = TRUE)
-    if (nrow(DT) == 0L) next
-
-    DT <- .canonicalRawFileTable(DT)
+    if (!nrow(DT)) next
     setorder(DT, EventID, StationID, ComponentID)
-    fwrite(DT, file.path(path.index, sprintf("RawFileTable.%s.csv", O)))
-    OUT[[O]] <- nrow(DT)
-    message(sprintf("[buildRawFileTable] %-7s  rows=%-7d stations=%-6d  fail=%d  %.1f sec",
-                    O, nrow(DT), length(STA), FAIL,
-                    as.numeric(difftime(Sys.time(), T0, units = "secs"))))
+    FILE <- file.path(pathIndex, paste0("RawFileTable.", Owner, ".csv"))
+    tryCatch({
+      fwrite(DT, FILE, eol = "\n")
+      OUT[[Owner]] <- nrow(DT)
+    }, error = function(e) {
+      Failures[[FILE]] <<- list(operation = "buildRawFileTable", unit = Owner,
+                                path = FILE, cause = e)
+    })
   }
+  if (length(Failures)) .stopPartialPublication(
+    "Provider file index has failures at: ", paste(names(Failures), collapse = ", "),
+    operation = "buildRawFileTable", failures = Failures, result = OUT, path = pathIndex)
   invisible(OUT)
 }
 
-#' @noRd
-.rawFileCols <- function() {
-  c("OwnerID", "EventID", "StationID", "ComponentID", "FileID",
-    "NP", "dt", "Fs", "Units", "HP", "LP", "isArray")
-}
-
-#' @noRd
-.canonicalRawFileTable <- function(DT) {
-  COLS <- .rawFileCols()
-  MISS <- setdiff(COLS, names(DT))
-  for (nm in MISS) {
-    DT[, (nm) := NA]
-  }
-  EXTRA <- setdiff(names(DT), COLS)
-  if (length(EXTRA)) {
-    DT[, (EXTRA) := NULL]
-  }
-  setcolorder(DT, COLS)
-
-  COLS.character <- c("OwnerID", "EventID", "StationID",
-                      "ComponentID", "FileID", "Units")
-  COLS.integer <- "NP"
-  COLS.numeric <- c("dt", "Fs", "HP", "LP")
-  DT[, (COLS.character) := lapply(.SD, as.character),
-     .SDcols = COLS.character]
-  DT[, (COLS.integer) := lapply(.SD, as.integer),
-     .SDcols = COLS.integer]
-  DT[, (COLS.numeric) := lapply(.SD, as.numeric),
-     .SDcols = COLS.numeric]
-  DT[, isArray := as.logical(isArray)]
-  DT[]
-}
-
-#' @noRd
-.assertRawFileSchema <- function(LIST) {
-  if (is.null(names(LIST))) {
-    names(LIST) <- sprintf("table%d", seq_along(LIST))
-  }
-  SCHEMA <- lapply(LIST, function(DT) {
-    if (!data.table::is.data.table(DT)) {
-      stop("buildRawFileTable() contains a non-data.table before binding",
-           call. = FALSE)
-    }
-    paste(names(DT),
-          vapply(DT, function(col) paste(class(col), collapse = "/"),
-                 character(1L)),
-          sep = ":")
-  })
-  SAME <- vapply(SCHEMA, identical, logical(1L), SCHEMA[[1L]])
-  if (!all(SAME)) {
-    stop(sprintf("buildRawFileTable() schema mismatch before binding: %s",
-                 paste(names(SAME)[!SAME], collapse = ", ")),
-         call. = FALSE)
-  }
-  invisible(TRUE)
+.canonicalRawFileTable <- function(data) {
+  COLS <- c("OwnerID", "EventID", "StationID", "ComponentID", "FileID",
+            "NP", "dt", "Fs", "Units", "HP", "LP", "isArray")
+  for (j in setdiff(COLS, names(data))) set(data, j = j, value = NA)
+  for (j in setdiff(names(data), COLS)) set(data, j = j, value = NULL)
+  setcolorder(data, COLS)
+  COLS <- c("OwnerID", "EventID", "StationID", "ComponentID", "FileID", "Units")
+  data[, (COLS) := lapply(.SD, as.character), .SDcols = COLS]
+  COLS <- c("dt", "Fs", "HP", "LP")
+  data[, (COLS) := lapply(.SD, as.numeric), .SDcols = COLS]
+  data[, `:=`(NP = as.integer(NP), isArray = as.logical(isArray))]
+  data[]
 }

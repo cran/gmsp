@@ -1,54 +1,39 @@
-#' Read a TRA/TRZ/TRB/TRC acceleration record (GSC and SGC families).
-#'
-#' TRA/TRZ have a multi-column body after `END_HEADER`; the last column
-#' is the corrected acceleration. TRB/TRC have a single-column body
-#' after the `Unidades:` (TRB) or `USER5` (TRC) line. OCID lives in the
-#' header: `Component:` (TRA/TRZ), `Componente:` (TRB), `STREAM:` (TRC).
-#'
-#' @param file Path to the file.
-#' @param type One of `"TRA"`, `"TRZ"`, `"TRB"`, `"TRC"`.
-#' @return LONG `data.table(t, OCID, s)`.
-#' @examples
-#' file <- tempfile()
-#' writeLines(c(
-#'   "Component: HNZ",
-#'   "rate: 100",
-#'   "END_HEADER",
-#'   "skip1",
-#'   "skip2",
-#'   "1 2 3",
-#'   "4 5 6"
-#' ), file)
-#' readTR(file, type = "TRA")
-#'
-#' @importFrom data.table fread data.table
-#' @export
-readTR <- function(file, type) {
+# SPDX-FileCopyrightText: 2026 Alejandro Daniel Verri <averri@fi.uba.ar>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Part of gmsp: free software under the GNU Affero General Public License, version 3 or later, see <https://www.gnu.org/licenses/>.
+# Text and data mining reserved for any use not licensed under the AGPL-3: see <https://kanameishi.github.io/tdm-policy.html>.
+.readTR <- function(file, format) {
   DATA <- .readClean(file)
-  AUX  <- switch(type,
-    TRA = list(end = "END_HEADER", skip = 3L, col = "last",
-               pat  = "(?<=rate:)\\s*[0-9.]+",                inv = TRUE,
-               ocid = "(?<=Component:)\\s*\\S+"),
-    TRZ = list(end = "END_HEADER", skip = 3L, col = "last",
-               pat  = "(?<=rate:)\\s*[0-9.]+",                inv = TRUE,
-               ocid = "(?<=Component:)\\s*\\S+"),
-    TRB = list(end = "Unidades",   skip = 1L, col = "first",
-               pat  = "(?<=muestreo:)\\s*[0-9.]+",            inv = TRUE,
-               ocid = "(?<=Componente:)\\s*\\S+"),
-    TRC = list(end = "USER5",      skip = 1L, col = "first",
-               pat  = "(?<=SAMPLING_INTERVAL_S:)\\s*[0-9.]+", inv = FALSE,
-               ocid = "(?<=STREAM:)\\s*\\S+"))
-  i  <- grep(AUX$end, DATA)
-  stopifnot(length(i) == 1L)
-  dt <- as.numeric(regmatches(DATA[1L:i],
-                              regexpr(AUX$pat, DATA[1L:i], perl = TRUE)))
-  stopifnot(length(dt) == 1L, dt > 0)
-  if (AUX$inv) dt <- 1 / dt
-  OCID <- gsub("\\s", "",
-               regmatches(DATA[1L:i],
-                          regexpr(AUX$ocid, DATA[1L:i], perl = TRUE))[1L])
-  stopifnot(nzchar(OCID))
-  DT <- suppressWarnings(fread(text = DATA[(i + AUX$skip):length(DATA)]))
-  s  <- as.vector(if (AUX$col == "last") DT[[ncol(DT)]] else DT[[1L]])
-  .toLong(dt, OCID, s)
+  Header <- switch(format,
+    TRA = list(end = "END_HEADER", skip = 3L, column = "last",
+               pattern = "(?<=rate:)\\s*[0-9.]+", inverse = TRUE,
+               channel = "(?<=Component:)\\s*\\S+"),
+    TRZ = list(end = "END_HEADER", skip = 3L, column = "last",
+               pattern = "(?<=rate:)\\s*[0-9.]+", inverse = TRUE,
+               channel = "(?<=Component:)\\s*\\S+"),
+    TRB = list(end = "Unidades", skip = 1L, column = "first",
+               pattern = "(?<=muestreo:)\\s*[0-9.]+", inverse = TRUE,
+               channel = "(?<=Componente:)\\s*\\S+"),
+    TRC = list(end = "USER5", skip = 1L, column = "first",
+               pattern = "(?<=SAMPLING_INTERVAL_S:)\\s*[0-9.]+", inverse = FALSE,
+               channel = "(?<=STREAM:)\\s*\\S+"))
+  i <- grep(Header$end, DATA)
+  if (length(i) != 1L) {
+    .stopUsage("TR header terminator is missing or repeated.", operation = "readProviderFile")
+  }
+  SamplingInterval <- suppressWarnings(as.numeric(regmatches(DATA[seq_len(i)],
+    regexpr(Header$pattern, DATA[seq_len(i)], perl = TRUE))))
+  if (length(SamplingInterval) != 1L || !is.finite(SamplingInterval) || SamplingInterval <= 0) {
+    .stopUsage("TR header requires a positive sampling value.", operation = "readProviderFile")
+  }
+  if (Header$inverse) SamplingInterval <- 1 / SamplingInterval
+  OCID <- gsub("\\s", "", regmatches(DATA[seq_len(i)],
+    regexpr(Header$channel, DATA[seq_len(i)], perl = TRUE))[1L])
+  if (is.na(OCID) || !nzchar(OCID)) {
+    .stopUsage("TR header requires a channel.", operation = "readProviderFile")
+  }
+  DT <- suppressWarnings(fread(text = DATA[seq.int(i + Header$skip, length(DATA))]))
+  s <- DT[[1L]]
+  if (Header$column == "last") s <- DT[[ncol(DT)]]
+  .toLong(SamplingInterval, OCID = OCID, signal = as.vector(s))
 }

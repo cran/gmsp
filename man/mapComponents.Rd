@@ -2,43 +2,45 @@
 % Please edit documentation in R/mapComponents.R
 \name{mapComponents}
 \alias{mapComponents}
-\title{Map provider components to canonical processed components.}
+\title{Map provider channels to canonical directions}
 \usage{
-mapComponents(DT, rotate = TRUE, output = c("long", "wide"))
+mapComponents(data, rotate, output = "long")
 }
 \arguments{
-\item{DT}{LONG \code{data.table(t, OCID, s)} or WIDE
-\verb{data.table(t, <OCID1>, <OCID2>, <OCID3>)} for ONE record.}
+\item{data}{A long data.table with \code{t, OCID, s}, or a wide data.table
+with \code{t} and three provider signal columns.}
 
-\item{rotate}{Logical scalar. If \code{TRUE}, rotate the two horizontal
-components to their principal axes and store \code{attr(out, "theta")}.}
+\item{rotate}{Logical scalar selecting horizontal rotation.}
 
-\item{output}{\code{"long"} (default) returns provider \code{OCID}, canonical \code{DIR},
-and signal \code{s}; \code{"wide"} returns \code{data.table(t, H1, H2, UP)}.}
+\item{output}{Either \code{long} or \code{wide}.}
 }
 \value{
-A \code{data.table} in the requested \code{output} shape, or \code{NULL} when the
-record cannot be mapped. Both shapes carry \code{attr(out, "componentMap")}
-and \code{attr(out, "rotate")}; rotated outputs also carry
-\code{attr(out, "theta")}.
+A long data.table with \code{t, OCID, DIR, s}, or a wide data.table
+with \code{t, H1, H2, UP}. Both carry \code{componentMap} and \code{rotate}
+attributes; rotated results also carry \code{theta} in radians. Returns
+NULL when the record cannot be classified or rotated.
 }
 \description{
-Classifies a single three-component record, preserves provider channel names
-in \code{OCID}, and records canonical processed directions in \code{DIR}
-(\code{H1}, \code{H2}, \code{UP}). This helper is for processed products; raw extraction
-continues to preserve provider \code{OCID} values.
+Classifies one three-component record as H1, H2 and UP while preserving
+provider channel identities in OCID. Optional rotation aligns the horizontal
+signals with their principal axes.
+}
+\details{
+Classification requires three OCID values and one recognized
+vertical channel. Finite horizontal peaks provide the classification
+fallback when covariance is unavailable. Rotation requires at least two
+finite horizontal pairs. The input table remains unchanged.
 }
 \examples{
-t <- seq(0, 1, by = 0.1)
-x <- data.table::rbindlist(list(
-  data.table::data.table(t = t, OCID = "N", s = sin(2 * pi * t)),
-  data.table::data.table(t = t, OCID = "E", s = 0.5 * cos(2 * pi * t)),
-  data.table::data.table(t = t, OCID = "Z", s = 0.1 * sin(2 * pi * t))
-))
-mapped <- mapComponents(x, rotate = FALSE)
-head(mapped)
-
-}
-\seealso{
-\code{\link[=extractRecord]{extractRecord()}}
+Time <- seq(0, 1, by = 0.01)
+Record <- data.table::data.table(
+  t = rep(Time, 3), OCID = rep(c("HNE", "HNN", "HNZ"), each = length(Time)),
+  s = c(sin(2 * pi * 2 * Time), 0.5 * sin(2 * pi * 2 * Time + 0.3),
+        0.2 * sin(2 * pi * 5 * Time)))
+Wide <- mapComponents(Record, rotate = FALSE, output = "wide")
+head(Wide)
+attr(Wide, "componentMap")
+Rotated <- mapComponents(Record, rotate = TRUE)
+attr(Rotated, "theta")
+head(Rotated)
 }

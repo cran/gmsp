@@ -2,53 +2,46 @@
 % Please edit documentation in R/buildRawRecordTable.R
 \name{buildRawRecordTable}
 \alias{buildRawRecordTable}
-\title{Build the canonical RawRecordTable for one or more owners.}
+\title{Build raw record indexes}
 \usage{
-buildRawRecordTable(path.records, path.index, owners = NULL)
+buildRawRecordTable(pathRecords, pathIndex, owners = NULL)
 }
 \arguments{
-\item{path.records}{Absolute path to the records root. Required -- no default.}
+\item{pathRecords}{Records root containing owner, event and station folders.}
 
-\item{path.index}{Absolute path to the index root where per-owner CSVs are
-written. Required -- no default.}
+\item{pathIndex}{Existing destination folder for the index files.}
 
-\item{owners}{Character vector of \code{OwnerID}s. \code{NULL} = scan all
-subdirs of \code{path.records}.}
+\item{owners}{Owner identifiers; NULL scans immediate directories of
+pathRecords.}
 }
 \value{
-Invisibly, the per-owner row counts.
+An invisible named list of row counts for the owners written.
 }
 \description{
-Scans \verb{<path.records>/<OwnerID>/<EventID>/<StationID>/raw/AT.*.json} and
-emits one row per \code{RecordID} to \verb{<path.index>/RawRecordTable.<OwnerID>.csv}.
+Reads AT, VT and DT raw JSON sidecars and writes
+\verb{RawRecordTable.<OwnerID>.csv} for each owner with records.
 }
 \details{
-Schema:
+Columns are RecordID, EventID, StationID, OwnerID, NP, Fs and pad,
+ordered by event and station. NP is the maximum pre-alignment count from
+the sidecar, and pad is the difference between maximum and minimum
+counts. Under truncation, NP does not describe the CSV row count.
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{RecordID, EventID, StationID, OwnerID, NP, Fs, pad
-}\if{html}{\out{</div>}}
-
-where \code{NP = max(json$NP)} (post-align) and
-\code{pad = max(json$NP) - min(json$NP)}.
-
-This table carries zero per-direction metadata: directional detail
-(PGA, AI, ARMS, ...) lives in \verb{RawIntensityTable.<Owner>.csv}. The
-per-layer \verb{Raw*} prefix leaves room for downstream processors to
-emit their own \verb{<ProcessID>RecordTable.<Owner>.csv}.
+A station failure retains its cause and path. Valid rows are published;
+an error of class modulePartialPublication then carries failures, the
+partial result and destination path.
 }
 \examples{
-root <- file.path(tempdir(), "gmsp-raw-record-example")
-index <- file.path(tempdir(), "gmsp-raw-record-index")
-unlink(c(root, index), recursive = TRUE)
-raw <- file.path(root, "AAA", "E1", "S1", "raw")
-dir.create(raw, recursive = TRUE)
-dir.create(index)
-jsonlite::write_json(
-  list(RecordID = "R1", OwnerID = "AAA", EventID = "E1",
-       StationID = "S1", NP = c(4, 4, 4), Fs = 100),
-  file.path(raw, "AT.R1.json"), auto_unbox = TRUE
-)
-suppressMessages(buildRawRecordTable(root, index, owners = "AAA"))
-data.table::fread(file.path(index, "RawRecordTable.AAA.csv"))
-
+Root <- tempfile("buildRawRecordTable")
+Raw <- file.path(Root, "records", "NGAW", "E1", "S1", "raw")
+Index <- file.path(Root, "index")
+dir.create(Raw, recursive = TRUE)
+dir.create(Index)
+jsonlite::write_json(list(RecordID = "R1", OwnerID = "NGAW", EventID = "E1",
+  StationID = "S1", NP = c(4, 4, 3), Fs = 100), file.path(Raw, "AT.R1.json"),
+  auto_unbox = TRUE)
+Counts <- buildRawRecordTable(file.path(Root, "records"), pathIndex = Index)
+str(Counts)
+data.table::fread(file.path(Index, "RawRecordTable.NGAW.csv"))
+unlink(Root, recursive = TRUE)
 }

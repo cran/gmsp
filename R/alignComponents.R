@@ -1,46 +1,60 @@
-#' Equalize NP across components of a parsed record.
+# SPDX-FileCopyrightText: 2026 Alejandro Daniel Verri <averri@fi.uba.ar>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Part of gmsp: free software under the GNU Affero General Public License, version 3 or later, see <https://www.gnu.org/licenses/>.
+# Text and data mining reserved for any use not licensed under the AGPL-3: see <https://kanameishi.github.io/tdm-policy.html>.
+#' Equalize component sample counts
 #'
-#' Pads shorter OCIDs with trailing zeros (align = "max") or truncates
-#' longer OCIDs (align = "min") so all components share the same NP.
-#' Operates on a classified LONG table with columns `t`, `OCID`, `s`, and `DIR`.
+#' Pads shorter components with trailing zeros for max alignment, or truncates
+#' longer components for min alignment. Alignment operates by row count without
+#' interpolating time.
 #'
-#' @param DT   LONG `data.table(t, OCID, s, DIR)` for ONE record.
-#' @param align `"max"` (default) or `"min"`.
-#' @return Named list with two elements:
-#'   - `DT` : aligned LONG `data.table` with the same columns as the
-#'     input.
-#'   - `NP` : integer, final number of samples per component after
-#'     alignment (the same for every OCID).
-#'   When every OCID already shares the same NP the function returns
-#'   without padding or truncation; the input is passed through as
-#'   `DT` unchanged.
+#' @param data A long data.table with \code{t, OCID, s, DIR} for one record.
+#' @param align Either \code{max} or \code{min}.
+#' @return A list with \code{DT}, the aligned table, and \code{NP}, the final
+#'   sample count per component. The input table remains unchanged.
+#' @details Padding uses the interval between the first two samples of the
+#'   first OCID. Empty input, unknown alignment and a nonfinite or nonpositive
+#'   interval needed for padding raise errors.
 #' @examples
-#' x <- data.table::rbindlist(list(
-#'   data.table::data.table(t = c(0, 0.01, 0.02), OCID = "H1",
-#'                          DIR = "H1", s = c(1, 2, 3)),
-#'   data.table::data.table(t = c(0, 0.01), OCID = "H2",
-#'                          DIR = "H2", s = c(1, 2)),
-#'   data.table::data.table(t = c(0, 0.01, 0.02), OCID = "UP",
-#'                          DIR = "UP", s = c(0, 1, 0))
-#' ))
-#' aligned <- alignComponents(x, align = "max")
-#' aligned$NP
-#'
+#' Record <- data.table::data.table(
+#'   t = c(0, 0.01, 0.02, 0, 0.01), OCID = c("H1", "H1", "H1", "H2", "H2"),
+#'   DIR = c("H1", "H1", "H1", "H2", "H2"), s = c(1, 2, 3, 4, 5))
+#' Padded <- alignComponents(Record, align = "max")
+#' Padded$NP
+#' print(Padded$DT)
+#' alignComponents(Record, align = "min")$NP
 #' @export
-alignComponents <- function(DT, align = "max") {
-  AUX      <- DT[, .N, by = OCID]
-  NpTarget <- if (align == "max") max(AUX$N) else min(AUX$N)
-  if (all(AUX$N == NpTarget)) return(list(DT = DT, NP = NpTarget))
-  Dt  <- DT[OCID == DT$OCID[1L]][2L, t] - DT[OCID == DT$OCID[1L]][1L, t]
+alignComponents <- function(data, align = "max") {
+  if (!is.character(align) || length(align) != 1L || is.na(align) ||
+      !align %in% c("max", "min")) {
+    .stopUsage("align must be max or min.", operation = "alignComponents")
+  }
+  if (!is.data.table(data) || !all(c("t", "OCID", "s", "DIR") %in% names(data)) || !nrow(data)) {
+    .stopUsage("data requires nonempty t, OCID, s and DIR columns.", operation = "alignComponents")
+  }
+  DT <- copy(data)
+  AUX <- DT[, .N, by = OCID]
+  SampleCount <- max(AUX$N)
+  if (align == "min") SampleCount <- min(AUX$N)
+  if (all(AUX$N == SampleCount)) return(list(DT = DT, NP = SampleCount))
+  SamplingInterval <- NULL
+  if (align == "max") {
+    DATA <- DT[OCID == DT$OCID[1L], t]
+    SamplingInterval <- DATA[2L] - DATA[1L]
+    if (length(SamplingInterval) != 1L || !is.finite(SamplingInterval) || SamplingInterval <= 0) {
+      .stopUsage("Padding requires a finite positive first-channel interval.", operation = "alignComponents")
+    }
+  }
   OUT <- rbindlist(lapply(AUX$OCID, function(ocid) {
     AUX <- DT[OCID == ocid]
-    N   <- nrow(AUX)
-    if (N == NpTarget) return(AUX)
-    if (N <  NpTarget)
-      rbind(AUX, data.table(t = AUX[N, t] + Dt * seq_len(NpTarget - N),
-                             OCID = ocid, s = 0, DIR = AUX[1L, DIR]))
-    else
-      AUX[seq_len(NpTarget)]
+    n <- nrow(AUX)
+    if (n == SampleCount) return(AUX)
+    if (n < SampleCount) {
+      return(rbind(AUX, data.table(
+        t = AUX[n, t] + SamplingInterval * seq_len(SampleCount - n),
+        OCID = ocid, s = 0, DIR = AUX[1L, DIR])))
+    }
+    AUX[seq_len(SampleCount)]
   }))
-  list(DT = OUT, NP = NpTarget)
+  list(DT = OUT, NP = SampleCount)
 }

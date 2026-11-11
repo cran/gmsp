@@ -2,42 +2,35 @@
 % Please edit documentation in R/alignComponents.R
 \name{alignComponents}
 \alias{alignComponents}
-\title{Equalize NP across components of a parsed record.}
+\title{Equalize component sample counts}
 \usage{
-alignComponents(DT, align = "max")
+alignComponents(data, align = "max")
 }
 \arguments{
-\item{DT}{LONG \code{data.table(t, OCID, s, DIR)} for ONE record.}
+\item{data}{A long data.table with \code{t, OCID, s, DIR} for one record.}
 
-\item{align}{\code{"max"} (default) or \code{"min"}.}
+\item{align}{Either \code{max} or \code{min}.}
 }
 \value{
-Named list with two elements:
-\itemize{
-\item \code{DT} : aligned LONG \code{data.table} with the same columns as the
-input.
-\item \code{NP} : integer, final number of samples per component after
-alignment (the same for every OCID).
-When every OCID already shares the same NP the function returns
-without padding or truncation; the input is passed through as
-\code{DT} unchanged.
-}
+A list with \code{DT}, the aligned table, and \code{NP}, the final
+sample count per component. The input table remains unchanged.
 }
 \description{
-Pads shorter OCIDs with trailing zeros (align = "max") or truncates
-longer OCIDs (align = "min") so all components share the same NP.
-Operates on a classified LONG table with columns \code{t}, \code{OCID}, \code{s}, and \code{DIR}.
+Pads shorter components with trailing zeros for max alignment, or truncates
+longer components for min alignment. Alignment operates by row count without
+interpolating time.
+}
+\details{
+Padding uses the interval between the first two samples of the
+first OCID. Empty input, unknown alignment and a nonfinite or nonpositive
+interval needed for padding raise errors.
 }
 \examples{
-x <- data.table::rbindlist(list(
-  data.table::data.table(t = c(0, 0.01, 0.02), OCID = "H1",
-                         DIR = "H1", s = c(1, 2, 3)),
-  data.table::data.table(t = c(0, 0.01), OCID = "H2",
-                         DIR = "H2", s = c(1, 2)),
-  data.table::data.table(t = c(0, 0.01, 0.02), OCID = "UP",
-                         DIR = "UP", s = c(0, 1, 0))
-))
-aligned <- alignComponents(x, align = "max")
-aligned$NP
-
+Record <- data.table::data.table(
+  t = c(0, 0.01, 0.02, 0, 0.01), OCID = c("H1", "H1", "H1", "H2", "H2"),
+  DIR = c("H1", "H1", "H1", "H2", "H2"), s = c(1, 2, 3, 4, 5))
+Padded <- alignComponents(Record, align = "max")
+Padded$NP
+print(Padded$DT)
+alignComponents(Record, align = "min")$NP
 }

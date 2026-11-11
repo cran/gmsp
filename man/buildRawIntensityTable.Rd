@@ -2,76 +2,66 @@
 % Please edit documentation in R/buildRawIntensityTable.R
 \name{buildRawIntensityTable}
 \alias{buildRawIntensityTable}
-\title{Build the canonical RawIntensityTable for one or more owners (WIDE).}
+\title{Build raw acceleration intensity indexes}
 \usage{
 buildRawIntensityTable(
-  path.records,
-  path.index,
+  pathRecords,
+  pathIndex,
   owners = NULL,
   incremental = TRUE,
   force = FALSE
 )
 }
 \arguments{
-\item{path.records}{Absolute path to the records root. Required -- no default.}
+\item{pathRecords}{Records root containing owner, event and station folders.}
 
-\item{path.index}{Absolute path to the index root where per-owner CSVs are
-written. Required -- no default.}
+\item{pathIndex}{Existing destination folder for the index files.}
 
-\item{owners}{Character vector of \code{OwnerID}s. \code{NULL} = scan all.}
+\item{owners}{Owner identifiers; NULL scans immediate directories of
+pathRecords.}
 
-\item{incremental}{Logical. If \code{TRUE}, skip records already present in
-\verb{RawIntensityTable.<O>.csv}. Default: \code{TRUE}.}
+\item{incremental}{Reuses records already present in the index when TRUE.}
 
-\item{force}{Logical. If \code{TRUE}, ignore incremental cache and
-recompute everything. Default: \code{FALSE}.}
+\item{force}{Ignores the incremental cache when TRUE.}
 }
 \value{
-Invisibly, the per-owner row counts.
+An invisible named list of row counts for the owners written.
 }
 \description{
-For each station with \verb{raw/AT.<RID>.csv} / \code{.json}, calls
-\code{\link[=getRawIntensities]{getRawIntensities()}} to compute the 20 AT-derivable scalars per
-direction via \code{\link[=getIntensity]{getIntensity()}}. Emits one row per
-\verb{(RecordID, DIR)} - three rows per record.
+Measures raw AT records and writes \verb{RawIntensityTable.<OwnerID>.csv},
+with one row per RecordID and DIR and the provider OCID retained.
 }
 \details{
-Schema:
+The index contains RecordID, DIR, OCID, AI, AId, AIu, ARMS, ATn,
+ATo, AZC, CAV, CAV5, D0575, D0595, D2080, Dmax, EPI, Fs, NP, PDI,
+PGA, TmA and dt, ordered by RecordID and DIR. Values use a millimetre
+length basis. Duration and period fields use one decimal place and dt
+uses four; the remaining measure fields are rounded to integers.
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{RecordID, DIR, OCID,
-  AI, AId, AIu, ARMS, ATn, ATo, AZC, CAV, CAV5,
-  D0575, D0595, D2080, Dmax, EPI, Fs, NP, PDI,
-  PGA, TmA, dt
-}\if{html}{\out{</div>}}
-
-All amplitude scalars are in \code{TARGET_UNITS = "mm"}-derived units
-(\code{mm/s2}, \code{mm/s}, etc. per \code{getIntensity()} contract).
+VT and DT stations are omitted with a warning naming the station and
+quantity. A station failure retains its cause and path. Valid rows are
+published; an error of class modulePartialPublication then carries
+failures, the partial result and destination path. Existing files are
+replaced when the owner has new intensity rows.
 }
 \examples{
-root <- file.path(tempdir(), "gmsp-raw-intensity-table-example")
-index <- file.path(tempdir(), "gmsp-raw-intensity-table-index")
-unlink(c(root, index), recursive = TRUE)
-raw <- file.path(root, "AAA", "E1", "S1", "raw")
-dir.create(raw, recursive = TRUE)
-dir.create(index)
-t <- seq(0, 1, by = 0.01)
-data.table::fwrite(
-  data.table::data.table(
-    H1 = sin(2 * pi * t),
-    H2 = 0.5 * cos(2 * pi * t),
-    UP = 0.25 * sin(4 * pi * t)
-  ),
-  file.path(raw, "AT.R1.csv")
-)
-jsonlite::write_json(
-  list(RecordID = "R1", OwnerID = "AAA", EventID = "E1",
-       StationID = "S1", NetworkID = "NW",
-       DIR = c("H1", "H2", "UP"), OCID = c("H1", "H2", "UP"),
-       NP = rep(length(t), 3), dt = 0.01, Fs = 100, Units = "mm"),
-  file.path(raw, "AT.R1.json"), auto_unbox = TRUE
-)
-suppressMessages(buildRawIntensityTable(root, index, owners = "AAA",
-                                        incremental = FALSE))
-data.table::fread(file.path(index, "RawIntensityTable.AAA.csv"))
-
+Root <- tempfile("buildRawIntensityTable")
+Raw <- file.path(Root, "records", "NGAW", "E1", "S1", "raw")
+Index <- file.path(Root, "index")
+dir.create(Raw, recursive = TRUE)
+dir.create(Index)
+Time <- seq(0, 5, by = 0.01)
+Envelope <- sin(pi * Time / max(Time))^2
+data.table::fwrite(data.table::data.table(
+  HNE = 1200 * Envelope * sin(2 * pi * 1.5 * Time),
+  HNN = 800 * Envelope * sin(2 * pi * 2.5 * Time),
+  HNZ = 400 * Envelope * sin(2 * pi * 4 * Time)), file.path(Raw, "AT.R1.csv"))
+jsonlite::write_json(list(RecordID = "R1", DIR = c("H1", "H2", "UP"),
+  OCID = c("HNE", "HNN", "HNZ"), dt = 0.01), file.path(Raw, "AT.R1.json"),
+  auto_unbox = TRUE)
+Counts <- buildRawIntensityTable(file.path(Root, "records"), pathIndex = Index)
+str(Counts)
+Intensity <- data.table::fread(file.path(Index, "RawIntensityTable.NGAW.csv"))
+print(Intensity[, c("RecordID", "DIR", "OCID", "PGA", "AI", "D0595")])
+unlink(Root, recursive = TRUE)
 }

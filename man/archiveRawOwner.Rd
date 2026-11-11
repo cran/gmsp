@@ -2,29 +2,35 @@
 % Please edit documentation in R/archiveRawOwner.R
 \name{archiveRawOwner}
 \alias{archiveRawOwner}
-\title{Compress \verb{raw.owner/} to \code{raw.owner.tar.gz} and delete the directory.}
+\title{Archive a station's provider files}
 \usage{
 archiveRawOwner(path)
 }
 \arguments{
-\item{path}{Absolute path to the station folder containing \verb{raw.owner/}.}
+\item{path}{Station folder containing raw.owner.}
 }
 \value{
-Logical, \code{TRUE} if archive newly written, \code{FALSE} if no-op,
-\code{NA} on failure.
+An invisible logical value: TRUE after archiving, FALSE when the
+source directory is absent or the destination exists, and NA for a
+treated archive creation or listing failure.
 }
 \description{
-Saves disk space after the parser has succeeded. Returns silently if
-nothing to do (no \verb{raw.owner/} directory) or if the archive already
-exists. Only deletes \verb{raw.owner/} after the tar archive is verified
-(re-readable). On any failure, leaves both intact.
+Creates raw.owner.tar.gz from raw.owner and removes the source directory
+after confirming that the archive exists and has a nonempty listing.
+}
+\details{
+The working directory is restored on exit. The archive check is
+a listing check and does not compare extracted file bytes. A failed
+creation or listing leaves the source directory and removes the archive.
 }
 \examples{
-station <- file.path(tempdir(), "gmsp-archive-example")
-unlink(station, recursive = TRUE)
-dir.create(file.path(station, "raw.owner"), recursive = TRUE)
-writeLines("provider bytes", file.path(station, "raw.owner", "record.txt"))
-archiveRawOwner(station)
-file.exists(file.path(station, "raw.owner.tar.gz"))
-
+Station <- tempfile("archiveRawOwner")
+dir.create(file.path(Station, "raw.owner"), recursive = TRUE)
+writeLines(c("header", "Event, date, station, H1", "units",
+             "NPTS= 4, DT= 0.01 SEC", "1.0 2.0 3.0 4.0"),
+           file.path(Station, "raw.owner", "H1.AT2"))
+print(archiveRawOwner(Station))
+list.files(Station)
+utils::untar(file.path(Station, "raw.owner.tar.gz"), list = TRUE)
+unlink(Station, recursive = TRUE)
 }

@@ -2,70 +2,49 @@
 % Please edit documentation in R/buildRawFileTable.R
 \name{buildRawFileTable}
 \alias{buildRawFileTable}
-\title{Build the per-owner RawFileTable CSV (provider file inventory, post-archive safe).}
+\title{Build provider file indexes}
 \usage{
-buildRawFileTable(path.records, path.index, owners = NULL)
+buildRawFileTable(pathRecords, pathIndex, owners = NULL)
 }
 \arguments{
-\item{path.records}{Absolute path to the records root. Required -- no default.}
+\item{pathRecords}{Records root containing owner, event and station folders.}
 
-\item{path.index}{Absolute path to the index root where per-owner CSVs are
-written. Required -- no default.}
+\item{pathIndex}{Existing destination folder for \verb{RawFileTable.<OwnerID>.csv}.}
 
-\item{owners}{Character vector of \code{OwnerID}s. \code{NULL} = scan all.}
+\item{owners}{Owner identifiers; NULL scans immediate directories of
+pathRecords.}
 }
 \value{
-Invisibly, the per-owner row counts.
+An invisible named list of row counts for the owners written.
 }
 \description{
-For each station, reads \code{raw.owner/record.json} and emits one row
-per provider file (one per ComponentID x FileID). Handles both states:
-\itemize{
-\item \code{raw.owner/record.json} present on disk (not yet archived).
-\item \code{raw.owner.tar.gz} archive (extracts record.json via streaming
-\code{tar -xzOf} to avoid touching disk).
-}
+Reads record.json from each station's raw.owner directory or its
+raw.owner.tar.gz archive and writes one RawFileTable CSV per owner.
 }
 \details{
-Schema:
+Columns are OwnerID, EventID, StationID, ComponentID, FileID, NP,
+dt, Fs, Units, HP, LP and isArray, ordered by event, station and component.
+Missing metadata become typed NA and extra fields are dropped. isArray
+indicates more than three component rows in the provider metadata.
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{OwnerID, EventID, StationID, ComponentID, FileID,
-  NP, dt, Fs, Units, HP, LP, isArray
-}\if{html}{\out{</div>}}
-
-\code{PGA} is intentionally not emitted here. Pre-parse PGAs from
-\code{record.json} are in heterogeneous provider units; canonical
-post-parse PGAs (in mm/s^2) live in \verb{RawIntensityTable.<Owner>.csv}.
-Missing provider fields in the canonical schema are emitted as typed
-\code{NA} columns instead of changing the output schema.
-
-\code{isArray = nComponentID > 3} (heuristic per legacy convention).
+A station failure retains its cause and path. Valid rows are published;
+an error of class modulePartialPublication then carries failures, the
+partial result and destination path. Counts are not returned as complete
+after such a failure. Archive metadata are read without extracting files.
 }
 \examples{
-root <- file.path(tempdir(), "gmsp-raw-file-example")
-index <- file.path(tempdir(), "gmsp-raw-file-index")
-unlink(c(root, index), recursive = TRUE)
-dir.create(file.path(root, "AAA", "E1", "S1", "raw.owner"),
-           recursive = TRUE)
-dir.create(index)
-record <- list(
-  Event = list(EventID = "E1"),
-  Station = list(StationID = "S1"),
-  Record = list(
-    list(ComponentID = "H1", FileID = "H1.txt", NP = 4, dt = 0.01,
-         Fs = 100, Units = "cm", HP = NA, LP = NA),
-    list(ComponentID = "H2", FileID = "H2.txt", NP = 4, dt = 0.01,
-         Fs = 100, Units = "cm", HP = NA, LP = NA),
-    list(ComponentID = "UP", FileID = "UP.txt", NP = 4, dt = 0.01,
-         Fs = 100, Units = "cm", HP = NA, LP = NA)
-  )
-)
-jsonlite::write_json(
-  record,
-  file.path(root, "AAA", "E1", "S1", "raw.owner", "record.json"),
-  auto_unbox = TRUE
-)
-suppressMessages(buildRawFileTable(root, index, owners = "AAA"))
-data.table::fread(file.path(index, "RawFileTable.AAA.csv"))
-
+Root <- tempfile("buildRawFileTable")
+Station <- file.path(Root, "records", "NGAW", "E1", "S1", "raw.owner")
+Index <- file.path(Root, "index")
+dir.create(Station, recursive = TRUE)
+dir.create(Index)
+Metadata <- list(Event = list(EventID = "E1"), Station = list(StationID = "S1"),
+  Record = data.frame(ComponentID = c("HNE", "HNN", "HNZ"),
+                      FileID = c("HNE.AT2", "HNN.AT2", "HNZ.AT2"),
+                      NP = 4L, dt = 0.01, Fs = 100, Units = "g"))
+jsonlite::write_json(Metadata, file.path(Station, "record.json"), auto_unbox = TRUE)
+Counts <- buildRawFileTable(file.path(Root, "records"), pathIndex = Index)
+str(Counts)
+data.table::fread(file.path(Index, "RawFileTable.NGAW.csv"))
+unlink(Root, recursive = TRUE)
 }

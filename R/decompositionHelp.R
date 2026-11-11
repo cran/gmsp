@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 Alejandro Daniel Verri <averri@fi.uba.ar>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Part of gmsp: free software under the GNU Affero General Public License, version 3 or later, see <https://www.gnu.org/licenses/>.
+# Text and data mining reserved for any use not licensed under the AGPL-3: see <https://kanameishi.github.io/tdm-policy.html>.
+#' Decompose acceleration records into modes
+#' @description Regularizes acceleration records and composes the native xemd decomposition tables.
+#' @name decomposeRecords
+#' @usage decomposeRecords(TSL, method, control, by)
+#' @param TSL A data.table containing t in seconds, finite real samples s,
+#'   character ID and OCID, and record metadata. Only ID AT is decomposed.
+#'   Present components form a nonempty subset of H1, H2, and UP.
+#'   Each record has at least three unique times on a common component grid;
+#'   other metadata are constant within each component.
+#' @param method Historical name vmd or eemd, or a name returned by
+#'   xemd::listDecompositions().
+#' @param control Named list without duplicate names. Historical vmd requires
+#'   k, alpha, tau, DC, init, tolerance and maxIterations; init must be zero.
+#'   Historical eemd requires k, noise.amp, trials and an explicit sifting list.
+#'   Native controls follow the selected xemd method; signal, samplingInterval,
+#'   noise and noiseChannels are derived and cannot be supplied.
+#' @param by Distinct metadata column names identifying a record;
+#'   character() declares one record.
+#' @return A named list of data.tables with signal and modes and the fields
+#'   residue, fitResidual, meanNoise, diagnostics, termination, centers,
+#'   maskFrequencies or boundaries returned by the method. signal contains the
+#'   effective input. Mode indices and optional fields retain their native meaning.
+#' @details Regularization uses the smallest rationalized time difference,
+#'   monoH.FC interpolation and zero origin before translating controls.
+#'   Historical vmd uses zero initial centers and converts alpha by
+#'   samplingInterval^2 / (8 * pi^2); its relative tolerance is explicit,
+#'   and tol is not accepted. Historical eemd converts absolute noise.amp to
+#'   noise.amp / sd(signal) for each component, requiring positive finite sd;
+#'   it uses divisor realizations and maxModes equal to k. Conflicting maxModes
+#'   is an error. sifting follows its explicit xemd stopRule and its documented
+#'   defaults; wave and type5 are not translated.
+#'   Historical vmd calls ascend by effective interval, then record and component;
+#'   historical eemd calls ascend by record and component. Native methods follow
+#'   decomposeTSL ordering. Tables are ordered by by, OCID, ID, mode or boundary,
+#'   and t when present. Units are transported without conversion.
+#'   Stochastic methods consume the caller's random stream. The function sets
+#'   no seed, restores no RNG state, starts no parallel workers and writes no files.
+#'   Inputs are preserved. Invalid data or controls cause errors; xemd failures
+#'   retain their classes and group, with the moduleFailure family and operation.
+#'   Native diagnostics and termination retain non-convergence and iteration limits.
+#' @seealso [reconstructRecords()], [xemd::decomposeTSL()]
+#' @examples
+#' Time <- seq(0, 9, length.out = 1000)
+#' TSL <- data.table::data.table(RecordID = "R1", OCID = "H1", ID = "AT", t = Time,
+#'   s = sin(pi * Time) + sin(2 * pi * Time) + sin(6 * pi * Time) + 0.5 * Time,
+#'   Units = "mm")
+#' Control <- list(k = 3, alpha = 2000, tau = 0.5, DC = FALSE, init = 0,
+#'                 tolerance = 1e-6, maxIterations = 98)
+#' Decomposition <- decomposeRecords(TSL, method = "vmd", control = Control,
+#'                                   by = "RecordID")
+#' names(Decomposition)
+#' print(Decomposition$centers)
+#' head(Decomposition$modes)
+#' @export decomposeRecords
+NULL

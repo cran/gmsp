@@ -1,53 +1,33 @@
-#' Read a 3D-COL acceleration record (ACA, ACB, LIS).
-#'
-#' One file holds 3 components as parallel columns:
-#'   - ACA (IGP Peru): cols `Z N E` after a header row.
-#'   - ACB (CISMID Peru): cols `T EW NS UD`; the time column `T` is dropped.
-#'   - LIS (UCR Costa Rica): cols `N00E UPDO N90E` after a `===DATA===` line.
-#'
-#' OCIDs come from the file's column header line.
-#'
-#' @param file Path to the file.
-#' @param type One of `"ACA"`, `"ACB"`, `"LIS"`.
-#' @return LONG `data.table(t, OCID, s)`.
-#' @examples
-#' file <- tempfile()
-#' writeLines(c(
-#'   "MUESTREO : 100",
-#'   "  Z N E",
-#'   "1 2 3",
-#'   "4 5 6"
-#' ), file)
-#' readAC(file, type = "ACA")
-#'
-#' @importFrom data.table fread data.table melt
-#' @export
-readAC <- function(file, type) {
+# SPDX-FileCopyrightText: 2026 Alejandro Daniel Verri <averri@fi.uba.ar>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Part of gmsp: free software under the GNU Affero General Public License, version 3 or later, see <https://www.gnu.org/licenses/>.
+# Text and data mining reserved for any use not licensed under the AGPL-3: see <https://kanameishi.github.io/tdm-policy.html>.
+.readAC <- function(file, format) {
   DATA <- .readClean(file)
-  AUX  <- switch(type,
-    ACA = list(rowPat = "\\s+Z\\s+N",  inv = TRUE,
-               key = "MUESTREO",
-               pat = ".*MUESTREO\\s*:\\s*([0-9.]+).*"),
-    ACB = list(rowPat = "\\s+T\\s+EW", inv = TRUE,
-               key = "SAMPLING FREQUENCY",
-               pat = ".*\\(Hz\\)\\s*:\\s*([0-9.]+).*"),
-    LIS = list(rowPat = "={2,}DATA",   inv = FALSE,
-               key = "Delta",
-               pat = ".*Delta\\s*t\\s*:\\s*([0-9.]+).*"))
-  i  <- grep(AUX$rowPat, DATA, perl = TRUE)
-  stopifnot(length(i) == 1L)
-  j  <- if (type == "LIS") i else i - 1L
-  dt <- as.numeric(sub(AUX$pat, "\\1",
-                       grep(AUX$key, DATA[1L:j], value = TRUE, perl = TRUE)[1L],
-                       perl = TRUE))
-  stopifnot(length(dt) == 1L, !is.na(dt), dt > 0)
-  if (AUX$inv) dt <- 1 / dt
-  DT <- fread(text = DATA[(j + 1L):length(DATA)])
-  if (type == "ACB") {
-    AUX <- names(DT)[nchar(names(DT)) == 1L][1L]
-    if (!is.na(AUX)) DT[, (AUX) := NULL]
+  Header <- switch(format,
+    ACA = list(row = "\\s+Z\\s+N", inverse = TRUE, key = "MUESTREO",
+               pattern = ".*MUESTREO\\s*:\\s*([0-9.]+).*"),
+    ACB = list(row = "\\s+T\\s+EW", inverse = TRUE, key = "SAMPLING FREQUENCY",
+               pattern = ".*\\(Hz\\)\\s*:\\s*([0-9.]+).*"),
+    LIS = list(row = "={2,}DATA", inverse = FALSE, key = "Delta",
+               pattern = ".*Delta\\s*t\\s*:\\s*([0-9.]+).*"))
+  i <- grep(Header$row, DATA, perl = TRUE)
+  if (length(i) != 1L) {
+    .stopUsage("AC header row is missing or repeated.", operation = "readProviderFile")
   }
-  DT[, t := seq.int(0, by = dt, length.out = .N)]
-  melt(DT, id.vars = "t", variable.name = "OCID", value.name = "s",
-       variable.factor = FALSE)
+  j <- i - 1L
+  if (format == "LIS") j <- i
+  SamplingInterval <- suppressWarnings(as.numeric(sub(Header$pattern, "\\1",
+    grep(Header$key, DATA[seq_len(j)], value = TRUE, perl = TRUE)[1L], perl = TRUE)))
+  if (length(SamplingInterval) != 1L || !is.finite(SamplingInterval) || SamplingInterval <= 0) {
+    .stopUsage("AC header requires a positive sampling value.", operation = "readProviderFile")
+  }
+  if (Header$inverse) SamplingInterval <- 1 / SamplingInterval
+  DT <- fread(text = DATA[seq.int(j + 1L, length(DATA))])
+  if (format == "ACB") {
+    COLS <- names(DT)[nchar(names(DT)) == 1L][1L]
+    if (!is.na(COLS)) DT[, (COLS) := NULL]
+  }
+  DT[, t := seq.int(0, by = SamplingInterval, length.out = .N)]
+  melt(DT, id.vars = "t", variable.name = "OCID", value.name = "s", variable.factor = FALSE)
 }

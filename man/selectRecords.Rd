@@ -2,56 +2,43 @@
 % Please edit documentation in R/selectRecords.R
 \name{selectRecords}
 \alias{selectRecords}
-\title{Select records from a record metadata table.}
+\title{Select record identities}
 \usage{
 selectRecords(
-  M,
-  RecordID = NULL,
-  EventID = NULL,
-  StationID = NULL,
-  OwnerID = NULL
+  data,
+  recordID = NULL,
+  eventID = NULL,
+  stationID = NULL,
+  ownerID = NULL
 )
 }
 \arguments{
-\item{M}{record metadata \code{data.table}.}
+\item{data}{Table containing RecordID, OwnerID, EventID and StationID.}
 
-\item{RecordID}{character. Filter by \code{RecordID}. Default \code{NULL}.}
-
-\item{EventID}{character. Filter by \code{EventID}. Default \code{NULL}.}
-
-\item{StationID}{character. Filter by \code{StationID}. Default \code{NULL}.}
-
-\item{OwnerID}{character. Filter by \code{OwnerID}. Default \code{NULL}.}
+\item{recordID, eventID, stationID, ownerID}{Identity vectors for the
+corresponding columns. NULL leaves a dimension unrestricted;
+an empty vector selects zero rows.}
 }
 \value{
-\code{data.table(RecordID, OwnerID, EventID, StationID)}.
+A data.table with RecordID, OwnerID, EventID and StationID,
+in that column order, sorted by OwnerID, EventID and StationID.
 }
 \description{
-Filters a record metadata table by any combination of \code{RecordID},
-\code{EventID}, \code{StationID}, and \code{OwnerID}, then deduplicates to one row
-per record. Output is the canonical selection shape consumed by the
-\code{\link[=readTS]{readTS()}} family (\code{\link[=readAT]{readAT()}} / \code{\link[=readVT]{readVT()}} / \code{\link[=readDT]{readDT()}}) and
-\code{\link[=writeSelection]{writeSelection()}}.
+Intersects identity filters and returns unique record keys without
+modifying the supplied table.
 }
 \details{
-Filter args are character vectors (length 1+). \code{NULL} means "no
-restriction on this dimension". With all \code{NULL}, returns every
-record in \code{M} -- protect with explicit filters for non-trivial work.
-
-For richer filters (magnitude, distance, intensity), filter \code{M}
-first and pass the subset:
-
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{selectRecords(M[EventMagnitude > 7 & Repi < 100 & PGA > 600 & DIR == "H1"])
-}\if{html}{\out{</div>}}
+Duplicate key rows are collapsed. With every filter NULL,
+the result contains the unique keys of the supplied table.
+Missing required columns are input errors. The operation performs
+no file access.
 }
 \examples{
-master <- data.table::data.table(
-  RecordID = c("R1", "R1", "R2"),
-  OwnerID = c("AAA", "AAA", "BBB"),
-  EventID = c("E1", "E1", "E2"),
-  StationID = c("S1", "S1", "S2"),
-  DIR = c("H1", "H2", "H1")
-)
-selectRecords(master, OwnerID = "AAA")
-
+Records <- data.table::data.table(RecordID = c("R1", "R2", "R3"), OwnerID = "AAA",
+  EventID = c("E1", "E1", "E2"), StationID = c("S1", "S2", "S1"))
+selectRecords(Records, eventID = "E1")
+selectRecords(Records, stationID = "S1", ownerID = "AAA")
+}
+\seealso{
+\code{\link[=readRecordTSL]{readRecordTSL()}}, \code{\link[=writeSelection]{writeSelection()}}
 }
